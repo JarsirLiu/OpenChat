@@ -1,4 +1,7 @@
-FROM rust:1.88-bookworm AS builder
+ARG RUST_BUILDER_IMAGE=rust:1-slim-bookworm
+ARG RUNTIME_IMAGE=debian:bookworm-slim
+
+FROM ${RUST_BUILDER_IMAGE} AS builder
 
 WORKDIR /app
 
@@ -13,7 +16,7 @@ COPY config ./config
 
 RUN cargo build --release -p openchat-api
 
-FROM debian:bookworm-slim
+FROM ${RUNTIME_IMAGE}
 
 WORKDIR /app
 
