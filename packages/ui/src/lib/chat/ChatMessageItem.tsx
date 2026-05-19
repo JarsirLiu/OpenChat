@@ -91,7 +91,7 @@ export function ChatMessageItem({
   if (message.role === 'user') {
     return (
       <article className="flex w-full px-4 py-2">
-        <div className="ml-auto max-w-[75%] px-4 py-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-[14px] leading-relaxed shadow-sm">
+        <div className="lc-user-message-bubble ml-auto max-w-[75%] px-4 py-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-[14px] leading-relaxed shadow-sm">
           <ContentParts message={message} toolState={toolState} />
         </div>
       </article>

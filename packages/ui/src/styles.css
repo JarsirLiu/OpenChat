@@ -152,6 +152,18 @@
   border-radius: 18px;
 }
 
+.lc-user-message-bubble .lc-message-content {
+  gap: 8px;
+}
+
+.lc-user-message-bubble .lc-message-image {
+  width: 96px;
+  height: 96px;
+  margin-left: auto;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
 .lc-reasoning-card {
   display: grid;
   gap: 10px;
