@@ -1,0 +1,11 @@
+node_modules
+.pnpm-store
+target
+dist
+.vite
+coverage
+.git
+.env
+docker/.env
+docker/data
+apps/web/dist

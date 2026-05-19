@@ -1,0 +1,21 @@
+[package]
+name = "openchat-api"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true
+axum = { version = "0.7", features = ["macros", "multipart"] }
+async-stream = "0.3"
+dotenvy = "0.15"
+futures-util = "0.3"
+openchat-account-core = { path = "../../crates/account-core" }
+openchat-catalog-core = { path = "../../crates/catalog-core" }
+openchat-core = { path = "../../crates/openchat-core" }
+openchat-infra = { path = "../../crates/infra" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

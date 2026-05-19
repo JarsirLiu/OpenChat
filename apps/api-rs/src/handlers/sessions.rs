@@ -1,0 +1,172 @@
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
+
+use crate::{
+    http::sessions::{
+        RenameSessionDto, SessionDetailDto, SessionListItemDto, SessionMessageDto,
+        SessionToolCallSummaryDto,
+    },
+    state::AppState,
+};
+
+pub async fn list_sessions(State(state): State<AppState>) -> impl IntoResponse {
+    match state.chat_service.list_sessions().await {
+        Ok(items) => {
+            let sessions = items
+                .into_iter()
+                .map(|session| SessionListItemDto {
+                    id: session.id,
+                    title: session.title,
+                    status: session.status,
+                    created_at: session.created_at,
+                    updated_at: session.updated_at,
+                })
+                .collect::<Vec<_>>();
+            (StatusCode::OK, Json(sessions)).into_response()
+        }
+        Err(error) => (
+            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(serde_json::json!({ "message": error.message })),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn get_session(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> impl IntoResponse {
+    let session = match state.chat_service.get_session(session_id.as_str()).await {
+        Ok(item) => item,
+        Err(error) => {
+            return (
+                StatusCode::from_u16(error.status_code)
+                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(serde_json::json!({ "message": error.message })),
+            )
+                .into_response()
+        }
+    };
+
+    let Some(session) = session else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "message": "Session not found" })),
+        )
+            .into_response();
+    };
+
+    match state
+        .chat_service
+        .session_messages_snapshot(session_id.as_str())
+        .await
+    {
+        Ok(messages) => (
+            StatusCode::OK,
+            Json(SessionDetailDto {
+                session: SessionListItemDto {
+                    id: session.id,
+                    title: session.title,
+                    status: session.status,
+                    created_at: session.created_at,
+                    updated_at: session.updated_at,
+                },
+                messages: messages
+                    .into_iter()
+                    .map(|message| SessionMessageDto {
+                        id: message.id,
+                        role: message.role,
+                        turn_id: message.turn_id,
+                        status: message.status,
+                        created_at: message.created_at,
+                        updated_at: message.updated_at,
+                        content: message.content,
+                        tool_calls: message
+                            .tool_calls
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|tool_call| SessionToolCallSummaryDto {
+                                id: tool_call.id,
+                                name: tool_call.name,
+                                display_name: tool_call.display_name,
+                                parent_item_id: tool_call.parent_item_id,
+                                arguments_text: tool_call.arguments_text,
+                                result: tool_call.result,
+                                status: tool_call.status.unwrap_or_else(|| "completed".to_string()),
+                                media: tool_call.media.unwrap_or_default(),
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            }),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(serde_json::json!({ "message": error.message })),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn delete_session(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> impl IntoResponse {
+    match state.chat_service.delete_session(session_id.as_str()).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "message": "Session not found" })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(serde_json::json!({ "message": error.message })),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn rename_session(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+    Json(payload): Json<RenameSessionDto>,
+) -> impl IntoResponse {
+    let title = payload.title.trim();
+    if title.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "message": "Session title cannot be empty" })),
+        )
+            .into_response();
+    }
+
+    match state.chat_service.rename_session(session_id.as_str(), title).await {
+        Ok(Some(session)) => (
+            StatusCode::OK,
+            Json(SessionListItemDto {
+                id: session.id,
+                title: session.title,
+                status: session.status,
+                created_at: session.created_at,
+                updated_at: session.updated_at,
+            }),
+        )
+            .into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "message": "Session not found" })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(serde_json::json!({ "message": error.message })),
+        )
+            .into_response(),
+    }
+}

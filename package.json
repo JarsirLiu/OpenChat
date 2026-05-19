@@ -1,0 +1,21 @@
+{
+  "name": "openchat",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.20.0",
+  "scripts": {
+    "dev": "concurrently -n server,web -c yellow,green \"pnpm dev:server\" \"pnpm dev:web:wait\"",
+    "dev:server": "cargo run -p openchat-api",
+    "dev:web:wait": "wait-on http://127.0.0.1:8787/health && pnpm dev:web",
+    "dev:worker": "cargo run -p openchat-worker",
+    "dev:web": "pnpm --filter @openchat/web dev",
+    "build": "pnpm --filter @openchat/web build",
+    "typecheck": "pnpm --filter @openchat/web typecheck",
+    "check:server": "cargo check --workspace"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "wait-on": "^9.0.10"
+  }
+}

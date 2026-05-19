@@ -1,0 +1,632 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import Switch from 'antd/es/switch'
+import { AlertCircle, Check, CheckCircle2, ChevronDown, LoaderCircle, Plus, Trash2, X } from 'lucide-react'
+import clsx from 'clsx'
+import { AuthError, authenticatedFetch } from '../../../lib/auth'
+import type { UserCustomModel, UserProviderSetting } from '../types'
+
+interface ProviderSettingsDialogProps {
+  isOpen: boolean
+  onClose: () => void
+  onSaved: () => Promise<void> | void
+  onUnauthorized: () => void
+}
+
+type ProviderFormState = {
+  apiKey: string
+  enabled: boolean
+  hasStoredApiKey: boolean
+}
+
+type ModelDraftState = {
+  modelName: string
+  modelType: UserCustomModel['model_type']
+  baseUrl: string
+  apiKey: string
+}
+
+type FeedbackState = {
+  type: 'success' | 'error'
+  message: string
+}
+
+const DEFAULT_PROVIDER_KEY = 'openai'
+const DEFAULT_BASE_URL = 'https://aiapi.up.railway.app/v1'
+
+const CUSTOM_MODEL_TYPE_OPTIONS: Array<{
+  value: UserCustomModel['model_type']
+  label: string
+}> = [
+  { value: 'text', label: '文本' },
+  { value: 'multimodal', label: '多模态' },
+  { value: 'image', label: '图片生成' },
+]
+
+export function ProviderSettingsDialog({
+  isOpen,
+  onClose,
+  onSaved,
+  onUnauthorized,
+}: ProviderSettingsDialogProps) {
+  const [form, setForm] = useState<ProviderFormState>({
+    apiKey: '',
+    enabled: true,
+    hasStoredApiKey: false,
+  })
+  const [draft, setDraft] = useState<ModelDraftState>({
+    modelName: '',
+    modelType: 'text',
+    baseUrl: '',
+    apiKey: '',
+  })
+  const [customModels, setCustomModels] = useState<UserCustomModel[]>([])
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [deletingModelId, setDeletingModelId] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null)
+  const [modelTypeMenuOpen, setModelTypeMenuOpen] = useState(false)
+  const modelTypePanelRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    let active = true
+
+    const loadSettings = async () => {
+      setLoading(true)
+      setFeedback(null)
+
+      try {
+        const [providerResponse, customModelsResponse] = await Promise.all([
+          authenticatedFetch('/api/provider-settings'),
+          authenticatedFetch('/api/custom-models'),
+        ])
+
+        if (!providerResponse.ok || !customModelsResponse.ok) {
+          const providerPayload = (await providerResponse.json().catch(() => null)) as
+            | { message?: string }
+            | null
+          const modelPayload = (await customModelsResponse.json().catch(() => null)) as
+            | { message?: string }
+            | null
+          throw new Error(
+            providerPayload?.message ??
+              modelPayload?.message ??
+              'Failed to load model access settings',
+          )
+        }
+
+        const [providerPayload, customPayload] = (await Promise.all([
+          providerResponse.json(),
+          customModelsResponse.json(),
+        ])) as [UserProviderSetting[], UserCustomModel[]]
+
+        if (!active) {
+          return
+        }
+
+        const currentSetting =
+          providerPayload.find((item) => item.provider_key === DEFAULT_PROVIDER_KEY) ?? null
+
+        setForm({
+          apiKey: '',
+          enabled: currentSetting?.enabled ?? true,
+          hasStoredApiKey: currentSetting?.has_api_key ?? false,
+        })
+        setCustomModels(customPayload)
+      } catch (error) {
+        if (error instanceof AuthError && error.status === 401) {
+          onUnauthorized()
+          return
+        }
+        if (!active) {
+          return
+        }
+        setFeedback({
+          type: 'error',
+          message:
+            error instanceof Error ? error.message : 'Failed to load model access settings',
+        })
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadSettings()
+
+    return () => {
+      active = false
+    }
+  }, [isOpen, onUnauthorized])
+
+  useEffect(() => {
+    if (!modelTypeMenuOpen) return
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!modelTypePanelRef.current?.contains(event.target as Node)) {
+        setModelTypeMenuOpen(false)
+      }
+    }
+    window.addEventListener('mousedown', handlePointerDown)
+    return () => window.removeEventListener('mousedown', handlePointerDown)
+  }, [modelTypeMenuOpen])
+
+  useEffect(() => {
+    if (!feedback) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      setFeedback(null)
+    }, feedback.type === 'success' ? 2500 : 4500)
+
+    return () => window.clearTimeout(timeout)
+  }, [feedback])
+
+  const sortedCustomModels = useMemo(
+    () =>
+      [...customModels].sort((left, right) =>
+        left.model_name.localeCompare(right.model_name, 'zh-CN'),
+      ),
+    [customModels],
+  )
+
+  const updateForm = (patch: Partial<ProviderFormState>) => {
+    setForm((current) => ({ ...current, ...patch }))
+    setFeedback(null)
+  }
+
+  const updateDraft = (patch: Partial<ModelDraftState>) => {
+    setDraft((current) => ({ ...current, ...patch }))
+    setFeedback(null)
+  }
+
+  const saveProvider = async () => {
+    setSaving(true)
+    setFeedback(null)
+
+    try {
+      const response = await authenticatedFetch('/api/provider-settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          provider_key: DEFAULT_PROVIDER_KEY,
+          base_url: DEFAULT_BASE_URL,
+          api_key: form.apiKey.trim() || undefined,
+          enabled: form.enabled,
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null
+        throw new Error(payload?.message ?? 'Failed to save provider settings')
+      }
+
+      const payload = (await response.json()) as UserProviderSetting
+      setForm((current) => ({
+        ...current,
+        apiKey: '',
+        enabled: payload.enabled,
+        hasStoredApiKey: payload.has_api_key,
+      }))
+      setFeedback({
+        type: 'success',
+        message: 'API Key 已保存',
+      })
+      await onSaved()
+    } catch (error) {
+      if (error instanceof AuthError && error.status === 401) {
+        onUnauthorized()
+        return
+      }
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to save provider settings',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const createCustomModel = async () => {
+    if (!draft.modelName.trim()) {
+      setFeedback({
+        type: 'error',
+        message: '请先填写模型名称',
+      })
+      return
+    }
+    if (!draft.baseUrl.trim()) {
+      setFeedback({
+        type: 'error',
+        message: '请先填写 Base URL',
+      })
+      return
+    }
+    if (!draft.apiKey.trim()) {
+      setFeedback({
+        type: 'error',
+        message: '请先填写 API Key',
+      })
+      return
+    }
+
+    setCreating(true)
+    setFeedback(null)
+
+    try {
+      const response = await authenticatedFetch('/api/custom-models', {
+        method: 'POST',
+        body: JSON.stringify({
+          model_name: draft.modelName.trim(),
+          type: draft.modelType,
+          base_url: draft.baseUrl.trim(),
+          api_key: draft.apiKey.trim(),
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null
+        throw new Error(payload?.message ?? 'Failed to create custom model')
+      }
+
+      const payload = (await response.json()) as UserCustomModel
+      setCustomModels((current) => [...current, payload])
+      setDraft((current) => ({ ...current, modelName: '', baseUrl: '', apiKey: '' }))
+      setFeedback({
+        type: 'success',
+        message: '自定义模型已添加，并已进入可选列表',
+      })
+      await onSaved()
+    } catch (error) {
+      if (error instanceof AuthError && error.status === 401) {
+        onUnauthorized()
+        return
+      }
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to create custom model',
+      })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const deleteCustomModel = async (modelConfigId: string) => {
+    setDeletingModelId(modelConfigId)
+    setFeedback(null)
+
+    try {
+      const response = await authenticatedFetch(
+        `/api/custom-models/${encodeURIComponent(modelConfigId)}`,
+        {
+          method: 'DELETE',
+        },
+      )
+
+      if (!response.ok && response.status !== 204) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null
+        throw new Error(payload?.message ?? 'Failed to delete custom model')
+      }
+
+      setCustomModels((current) =>
+        current.filter((item) => item.model_config_id !== modelConfigId),
+      )
+      setFeedback({
+        type: 'success',
+        message: '自定义模型已删除',
+      })
+      await onSaved()
+    } catch (error) {
+      if (error instanceof AuthError && error.status === 401) {
+        onUnauthorized()
+        return
+      }
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to delete custom model',
+      })
+    } finally {
+      setDeletingModelId(null)
+    }
+  }
+
+  return (
+    <>
+      {isOpen ? (
+        <div
+          className="fixed inset-0 z-30 bg-black/20 lg:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      ) : null}
+
+      <aside
+        className={clsx(
+          'z-40 flex h-full shrink-0 overflow-hidden border-l border-gray-100 bg-white transition-all duration-300 ease-out dark:border-gray-800 dark:bg-[#151515]',
+          isOpen
+            ? 'fixed inset-y-0 right-0 w-full sm:w-[420px] lg:static lg:w-[420px]'
+            : 'w-0 border-l-0',
+        )}
+        aria-hidden={!isOpen}
+      >
+        <div
+          className={clsx(
+            'flex h-full w-[420px] flex-col',
+            isOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
+        >
+          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3 dark:border-gray-800">
+            <div className="flex items-center">
+              <div className="relative px-1 py-1 text-sm font-semibold text-gray-900 dark:text-white after:absolute after:-bottom-[13px] after:left-0 after:right-0 after:h-0.5 after:bg-gray-900 dark:after:bg-white">
+                参数
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+              aria-label="Close settings"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="flex min-h-[280px] items-center justify-center gap-3 px-5 text-sm text-gray-500 dark:text-gray-400">
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+                <span>正在读取配置…</span>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                <section className="px-5 py-5">
+                  <div className="mb-4 flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-[15px] font-semibold text-gray-900 dark:text-white">
+                        API Key 设置
+                      </h3>
+                      <p className="mt-1 text-[13px] leading-6 text-gray-500 dark:text-gray-400">
+                        请先前往{' '}
+                        <a
+                          href="https://colorect.tech/tokens"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-gray-900 underline underline-offset-2 dark:text-white"
+                        >
+                          colorect.tech/tokens
+                        </a>{' '}
+                        获取 API Key，保存后使用模型。
+                      </p>
+                    </div>
+                    <Switch
+                      checked={form.enabled}
+                      size="small"
+                      onChange={(checked) => updateForm({ enabled: checked })}
+                    />
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="block">
+                      <div className="mb-2 flex items-center justify-between text-[13px] font-medium text-gray-700 dark:text-gray-300">
+                        <span>API Key</span>
+                        {form.hasStoredApiKey ? (
+                          <span className="text-[12px] font-normal text-emerald-600 dark:text-emerald-400">
+                            已保存
+                          </span>
+                        ) : null}
+                      </div>
+                      <input
+                        type="password"
+                        value={form.apiKey}
+                        onChange={(event) => updateForm({ apiKey: event.target.value })}
+                        placeholder="请输入你购买的 API Key"
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
+                      />
+                    </label>
+
+                    <div className="flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void saveProvider()}
+                        disabled={saving}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-[13px] font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-200 dark:hover:bg-gray-800"
+                      >
+                        {saving ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                        <span>{saving ? '保存中' : '保存'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="px-5 py-5">
+                  <div className="mb-4">
+                    <h3 className="text-[15px] font-semibold text-gray-900 dark:text-white">
+                      自定义模型
+                    </h3>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-3">
+                      <label className="block">
+                        <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
+                          模型名称
+                        </div>
+                        <input
+                          type="text"
+                          value={draft.modelName}
+                          onChange={(event) => updateDraft({ modelName: event.target.value })}
+                          placeholder="如 gpt-4.1-mini 或 gemini-2.5-flash"
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
+                          Base URL
+                        </div>
+                        <input
+                          type="url"
+                          value={draft.baseUrl}
+                          onChange={(event) => updateDraft({ baseUrl: event.target.value })}
+                          placeholder="https://your-openai-compatible-endpoint/v1"
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
+                        />
+                      </label>
+
+                      <div className="flex items-end gap-2">
+                        <div className="relative min-w-0 flex-1" ref={modelTypePanelRef}>
+                          <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
+                            模型能力
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setModelTypeMenuOpen((open) => !open)}
+                            className="flex h-11 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:hover:bg-gray-800"
+                          >
+                            <span>
+                              {CUSTOM_MODEL_TYPE_OPTIONS.find((item) => item.value === draft.modelType)
+                                ?.label ?? '选择能力'}
+                            </span>
+                            <ChevronDown className="h-4 w-4 text-gray-400" />
+                          </button>
+
+                          {modelTypeMenuOpen ? (
+                            <div className="absolute left-0 top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-gray-100 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_10px_40px_rgba(0,0,0,0.4)]">
+                              {CUSTOM_MODEL_TYPE_OPTIONS.map((option) => {
+                                const active = draft.modelType === option.value
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    className={clsx(
+                                      'flex w-full items-center justify-between px-4 py-3 text-left transition-colors',
+                                      active
+                                        ? 'bg-gray-50 dark:bg-gray-800'
+                                        : 'hover:bg-gray-50 dark:hover:bg-gray-800',
+                                    )}
+                                    onClick={() => {
+                                      updateDraft({ modelType: option.value })
+                                      setModelTypeMenuOpen(false)
+                                    }}
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="text-[14px] text-gray-900 dark:text-gray-100">
+                                        {option.label}
+                                      </div>
+                                    </div>
+                                    {active ? (
+                                      <Check className="h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                                    ) : null}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <label className="min-w-0 flex-1">
+                          <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
+                            API Key
+                          </div>
+                          <input
+                            type="password"
+                            value={draft.apiKey}
+                            onChange={(event) => updateDraft({ apiKey: event.target.value })}
+                            placeholder="请输入这个自定义模型专属的 API Key"
+                            className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => void createCustomModel()}
+                          disabled={creating}
+                          className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 text-[13px] font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-200 dark:hover:bg-gray-800"
+                        >
+                          {creating ? (
+                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Plus className="h-3.5 w-3.5" />
+                          )}
+                          <span>添加</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50/70 dark:border-gray-800 dark:bg-[#171717]">
+                      {customModels.length === 0 ? (
+                        <div className="px-4 py-4 text-[13px] text-gray-400">
+                          还没有配置自定义模型
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {sortedCustomModels.map((model) => (
+                            <div
+                              key={model.model_config_id}
+                              className="flex items-center justify-between gap-3 px-4 py-3"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <div className="truncate text-[14px] text-gray-900 dark:text-gray-100">
+                                    {model.model_name}
+                                  </div>
+                                  <span className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                    {CUSTOM_MODEL_TYPE_OPTIONS.find((item) => item.value === model.model_type)
+                                      ?.label ?? model.model_type}
+                                  </span>
+                                </div>
+                                <div className="mt-1 truncate text-[12px] text-gray-400">
+                                  {model.base_url}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void deleteCustomModel(model.model_config_id)}
+                                className="rounded-md p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+                                aria-label={`Delete ${model.model_name}`}
+                              >
+                                {deletingModelId === model.model_config_id ? (
+                                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                {feedback ? (
+                  <section className="px-5 py-4">
+                    <div
+                      className={clsx(
+                        'flex items-start gap-2 rounded-xl border px-3 py-3 text-[13px]',
+                        feedback.type === 'success'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300'
+                          : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300',
+                      )}
+                    >
+                      {feedback.type === 'success' ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      ) : (
+                        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      )}
+                      <span>{feedback.message}</span>
+                    </div>
+                  </section>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>
+      </aside>
+    </>
+  )
+}

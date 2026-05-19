@@ -1,0 +1,11 @@
+{
+  "name": "@openchat/chat-core",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@openchat/protocol": "workspace:*"
+  }
+}

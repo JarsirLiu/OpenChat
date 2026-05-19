@@ -1,0 +1,19 @@
+[workspace]
+members = [
+  "crates/account-core",
+  "crates/catalog-core",
+  "crates/infra",
+  "crates/openchat-core",
+  "apps/api-rs",
+  "apps/worker-rs",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+
+[workspace.dependencies]
+anyhow = "1.0"
+tokio = { version = "1.38", features = ["full"] }
+tracing = "0.1"

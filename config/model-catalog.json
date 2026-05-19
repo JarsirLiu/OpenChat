@@ -1,0 +1,154 @@
+{
+  "providers": [
+    {
+      "key": "openai",
+      "label": "OpenChat"
+    }
+  ],
+  "models": [
+    {
+      "model_config_id": "openchat:gpt-5.5",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "model": "gpt-5.5",
+      "display_name": "GPT-5.5",
+      "source": "openchat",
+      "type": "multimodal",
+      "input_modalities": ["text", "image"],
+      "official": true,
+      "custom": false
+    },
+    {
+      "model_config_id": "openchat:gpt-5.4",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "model": "gpt-5.4",
+      "display_name": "GPT-5.4",
+      "source": "openchat",
+      "type": "multimodal",
+      "input_modalities": ["text", "image"],
+      "official": true,
+      "custom": false
+    },
+    {
+      "model_config_id": "openchat:gpt-5.3-codex",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "model": "gpt-5.3-codex",
+      "display_name": "GPT-5.3-Codex",
+      "source": "openchat",
+      "type": "multimodal",
+      "input_modalities": ["text", "image"],
+      "official": true,
+      "custom": false
+    },
+    {
+      "model_config_id": "openchat:gpt-5.4-mini",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "model": "gpt-5.4-mini",
+      "display_name": "GPT-5.4 Mini",
+      "source": "openchat",
+      "type": "multimodal",
+      "input_modalities": ["text", "image"],
+      "official": true,
+      "custom": false
+    },
+    {
+      "model_config_id": "openchat:gemini-3-pro-preview",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "model": "gemini-3-pro-preview",
+      "display_name": "Gemini 3 Pro Preview",
+      "source": "openchat",
+      "type": "multimodal",
+      "input_modalities": ["text", "image"],
+      "official": true,
+      "custom": false
+    },
+    {
+      "model_config_id": "openchat:gemini-3-flash-preview",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "model": "gemini-3-flash-preview",
+      "display_name": "Gemini 3 Flash Preview",
+      "source": "openchat",
+      "type": "multimodal",
+      "input_modalities": ["text", "image"],
+      "official": true,
+      "custom": false
+    },
+    {
+      "model_config_id": "openchat:claude-sonnet-4-6",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "model": "claude-sonnet-4-6",
+      "display_name": "Claude Sonnet 4.6",
+      "source": "openchat",
+      "type": "multimodal",
+      "input_modalities": ["text", "image"],
+      "official": true,
+      "custom": false
+    },
+    {
+      "model_config_id": "openchat:claude-opus-4-7",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "model": "claude-opus-4-7",
+      "display_name": "Claude Opus 4.7",
+      "source": "openchat",
+      "type": "multimodal",
+      "input_modalities": ["text", "image"],
+      "official": true,
+      "custom": false
+    },
+    {
+      "model_config_id": "openchat:claude-opus-4-5-20251101",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "model": "claude-opus-4-5-20251101",
+      "display_name": "Claude Opus 4.5 (2025-11-01)",
+      "source": "openchat",
+      "type": "multimodal",
+      "input_modalities": ["text", "image"],
+      "official": true,
+      "custom": false
+    },
+    {
+      "model_config_id": "openchat:claude-sonnet-4",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "model": "claude-sonnet-4",
+      "display_name": "Claude Sonnet 4",
+      "source": "openchat",
+      "type": "multimodal",
+      "input_modalities": ["text", "image"],
+      "official": true,
+      "custom": false
+    },
+    {
+      "model_config_id": "openchat:gemini-2.5-pro",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "model": "gemini-2.5-pro",
+      "display_name": "Gemini 2.5 Pro",
+      "source": "openchat",
+      "type": "multimodal",
+      "input_modalities": ["text", "image"],
+      "official": true,
+      "custom": false
+    }
+  ],
+  "tools": []
+}

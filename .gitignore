@@ -1,0 +1,12 @@
+node_modules
+dist
+.vite
+coverage
+target
+Cargo.lock
+.env
+docker/.env
+docker/.env.*
+!docker/.env.example
+docker/DEPLOY.md
+docker/data/
