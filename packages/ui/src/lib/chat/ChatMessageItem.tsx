@@ -4,7 +4,9 @@ import { AssistantFrame } from './AssistantFrame'
 import { AssistantActionsBar } from './AssistantActionsBar'
 import { ContentParts } from './ContentParts'
 import { ContentLoading } from './parts/ContentLoading'
+import { Image } from './parts/Image'
 import { Reasoning } from './parts/Reasoning'
+import { Text } from './parts/Text'
 
 const getReasoningText = (message: ChatMessage): string =>
   message.content
@@ -89,10 +91,42 @@ export function ChatMessageItem({
   toolState,
 }: ChatMessageItemProps) {
   if (message.role === 'user') {
+    const imageParts = message.content.filter(
+      (part): part is Extract<(typeof message.content)[number], { type: 'image' }> =>
+        part.type === 'image',
+    )
+    const textParts = message.content.filter(
+      (part): part is Extract<(typeof message.content)[number], { type: 'text' }> =>
+        part.type === 'text' && part.text.trim().length > 0,
+    )
+
     return (
       <article className="flex w-full px-4 py-2">
-        <div className="lc-user-message-bubble ml-auto max-w-[75%] px-4 py-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-[14px] leading-relaxed shadow-sm">
-          <ContentParts message={message} toolState={toolState} />
+        <div className="ml-auto flex max-w-[75%] flex-col items-end gap-2">
+          {imageParts.length > 0 ? (
+            <div className="lc-user-message-images">
+              {imageParts.map((part, index) => (
+                <Image
+                  key={`user-image:${message.turnId}:${part.url}:${index}`}
+                  url={part.url}
+                  alt={part.alt}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          <div className="lc-user-message-bubble px-4 py-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-[14px] leading-relaxed shadow-sm">
+            <div className="lc-message-content">
+              {textParts.map((part, index) => (
+                <Text
+                  key={`user-text:${message.turnId}:${index}`}
+                  text={part.text}
+                  isCreatedByUser
+                  showCursor={message.status === 'in_progress'}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </article>
     )

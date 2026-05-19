@@ -152,14 +152,24 @@
   border-radius: 18px;
 }
 
+.lc-user-message-images {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.lc-user-message-bubble {
+  max-width: 100%;
+}
+
 .lc-user-message-bubble .lc-message-content {
   gap: 8px;
 }
 
-.lc-user-message-bubble .lc-message-image {
+.lc-user-message-images .lc-message-image {
   width: 96px;
   height: 96px;
-  margin-left: auto;
   object-fit: cover;
   border-radius: 14px;
 }
