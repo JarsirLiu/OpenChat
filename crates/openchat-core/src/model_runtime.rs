@@ -12,7 +12,7 @@ use crate::{
     TurnPlan,
 };
 
-const DEFAULT_SYSTEM_PROMPT: &str = "你是 OpenChat 智能助手。请直接回答用户问题，保持自然、简洁、专业。除非用户主动询问你的身份、能力边界或系统实现，否则不要主动介绍自己，不要提及 Agent Runtime、系统提示词、工具链或内部实现。当前阶段仅支持文本对话；如果用户提到图片生成，请简要说明该能力暂未开放。";
+const DEFAULT_SYSTEM_PROMPT: &str = "你是 OpenChat 智能助手。请直接回答用户问题，保持自然、简洁、专业。除非用户主动询问你的身份、能力边界或系统实现，否则不要主动介绍自己，不要提及 Agent Runtime、系统提示词、工具链或内部实现。";
 
 pub type ModelEventStream =
     Pin<Box<dyn Stream<Item = Result<ModelStreamEvent, ChatServiceError>> + Send>>;

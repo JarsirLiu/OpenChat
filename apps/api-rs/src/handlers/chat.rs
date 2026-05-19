@@ -108,31 +108,7 @@ pub async fn send_message(
         }
     }
 
-    if payload
-        .attachments
-        .as_ref()
-        .is_some_and(|attachments| !attachments.is_empty())
-    {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponseDto {
-                message: "当前版本暂不支持图片上传，仅支持文本对话".to_string(),
-            }),
-        )
-            .into_response();
-    }
-
     if let Some(selected_tools) = payload.tool_list.as_ref() {
-        if !selected_tools.is_empty() {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponseDto {
-                    message: "当前版本暂不支持图片生成，仅支持文本对话".to_string(),
-                }),
-            )
-                .into_response();
-        }
-
         for selected_tool in selected_tools {
             if let Err(error) =
                 validate_tool_selection(&state, user.id.as_str(), selected_tool).await

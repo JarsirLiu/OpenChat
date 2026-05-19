@@ -103,6 +103,122 @@ docker compose -f docker-compose.local.yml build app nginx
 docker compose -f docker-compose.local.yml push app nginx
 ```
 
+If you prefer explicit tagging and pushing, you can also run:
+
+```bash
+cd docker
+docker compose -f docker-compose.local.yml build app nginx
+docker tag openchat-app:latest ccr.ccs.tencentyun.com/openchat/openchat-app:latest
+docker tag openchat-nginx:latest ccr.ccs.tencentyun.com/openchat/openchat-nginx:latest
+docker push ccr.ccs.tencentyun.com/openchat/openchat-app:latest
+docker push ccr.ccs.tencentyun.com/openchat/openchat-nginx:latest
+```
+
+## Release Workflow
+
+Use this flow when publishing locally built images and deploying them on a remote server.
+
+### 1. Build Images Locally
+
+```bash
+cd docker
+docker compose -f docker-compose.local.yml build app nginx
+```
+
+If you only changed the frontend, rebuild only `nginx`:
+
+```bash
+cd docker
+docker compose -f docker-compose.local.yml build nginx
+```
+
+If you only changed the Rust backend, rebuild only `app`:
+
+```bash
+cd docker
+docker compose -f docker-compose.local.yml build app
+```
+
+### 2. Login To Tencent Cloud Registry
+
+```bash
+docker login ccr.ccs.tencentyun.com
+```
+
+### 3. Tag Images
+
+If `docker/.env` already contains:
+
+```env
+OPENCHAT_APP_IMAGE=ccr.ccs.tencentyun.com/openchat/openchat-app:latest
+OPENCHAT_NGINX_IMAGE=ccr.ccs.tencentyun.com/openchat/openchat-nginx:latest
+```
+
+you can push directly with Compose:
+
+```bash
+cd docker
+docker compose -f docker-compose.local.yml push app nginx
+```
+
+Otherwise tag manually:
+
+```bash
+docker tag openchat-app:latest ccr.ccs.tencentyun.com/openchat/openchat-app:latest
+docker tag openchat-nginx:latest ccr.ccs.tencentyun.com/openchat/openchat-nginx:latest
+```
+
+### 4. Push Images
+
+Push both images:
+
+```bash
+docker push ccr.ccs.tencentyun.com/openchat/openchat-app:latest
+docker push ccr.ccs.tencentyun.com/openchat/openchat-nginx:latest
+```
+
+Or push only one image when appropriate:
+
+```bash
+docker push ccr.ccs.tencentyun.com/openchat/openchat-app:latest
+```
+
+```bash
+docker push ccr.ccs.tencentyun.com/openchat/openchat-nginx:latest
+```
+
+### 5. Pull Images On The Remote Server
+
+On the server, make sure `docker/.env` contains:
+
+```env
+OPENCHAT_APP_IMAGE=ccr.ccs.tencentyun.com/openchat/openchat-app:latest
+OPENCHAT_NGINX_IMAGE=ccr.ccs.tencentyun.com/openchat/openchat-nginx:latest
+```
+
+Then pull and restart:
+
+```bash
+cd /opt/OpenChat/docker
+docker login ccr.ccs.tencentyun.com
+docker compose pull app nginx
+docker compose up -d
+```
+
+If you only updated one image:
+
+```bash
+cd /opt/OpenChat/docker
+docker compose pull app
+docker compose up -d app
+```
+
+```bash
+cd /opt/OpenChat/docker
+docker compose pull nginx
+docker compose up -d nginx
+```
+
 ## Notes
 
 - The app does not need a local file media server when running in S3 mode.
