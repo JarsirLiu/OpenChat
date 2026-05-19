@@ -3,7 +3,7 @@ name: openchat-middleware
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: openchat-postgres
+    container_name: openchat-middleware-postgres
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     environment:
@@ -11,7 +11,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-openchat}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-openchat123456}
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - ./data-middleware/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openchat} -d ${POSTGRES_DB:-openchat}"]
       interval: 10s
@@ -21,7 +21,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: openchat-minio
+    container_name: openchat-middleware-minio
     ports:
       - "${MINIO_API_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
@@ -29,7 +29,7 @@ services:
       - MINIO_ROOT_USER=${OPENCHAT_S3_ACCESS_KEY_ID:-minioadmin}
       - MINIO_ROOT_PASSWORD=${OPENCHAT_S3_SECRET_ACCESS_KEY:-minioadmin}
     volumes:
-      - ./data/minio:/data
+      - ./data-middleware/minio:/data
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -41,7 +41,7 @@ services:
 
   minio-init:
     image: minio/mc:latest
-    container_name: openchat-minio-init
+    container_name: openchat-middleware-minio-init
     depends_on:
       minio:
         condition: service_healthy

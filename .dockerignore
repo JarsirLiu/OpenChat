@@ -15,6 +15,7 @@ coverage
 docker/.env
 docker/.env.*
 docker/data
+docker/data-middleware
 docker/data-test
 docker/nginx/ssl/localhost
 data
