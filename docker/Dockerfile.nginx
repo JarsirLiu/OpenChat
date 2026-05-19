@@ -1,19 +1,36 @@
-FROM node:20-bookworm-slim AS web-builder
+ARG NODE_BUILDER_IMAGE=node:20-bookworm-slim
+ARG NGINX_RUNTIME_IMAGE=nginx:1.27-alpine
+ARG ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
+
+FROM ${NODE_BUILDER_IMAGE} AS web-builder
 
 WORKDIR /app
 
 RUN corepack enable
 
+# Copy workspace manifests first so pnpm install can be cached cleanly.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
-COPY apps ./apps
-COPY packages ./packages
+COPY apps/web/package.json apps/web/package.json
+COPY packages/chat-core/package.json packages/chat-core/package.json
+COPY packages/protocol/package.json packages/protocol/package.json
+COPY packages/ui/package.json packages/ui/package.json
 
 RUN pnpm install --frozen-lockfile
+
+# Copy only the frontend sources needed for the web build.
+COPY apps/web ./apps/web
+COPY packages/chat-core ./packages/chat-core
+COPY packages/protocol ./packages/protocol
+COPY packages/ui ./packages/ui
+
 RUN pnpm --filter @openchat/web build
 
-FROM nginx:1.27-alpine
+FROM ${NGINX_RUNTIME_IMAGE}
 
-RUN apk add --no-cache curl openssl gettext
+ARG ALPINE_MIRROR
+
+RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
+    && apk add --no-cache curl openssl gettext
 
 COPY docker/scripts/nginx-entrypoint.sh /scripts/nginx-entrypoint.sh
 RUN chmod +x /scripts/nginx-entrypoint.sh

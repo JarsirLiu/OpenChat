@@ -48,10 +48,13 @@ services:
     restart: unless-stopped
 
   app:
-    image: ${OPENCHAT_APP_IMAGE:-openchat-app:latest}
+    image: openchat-app:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile.app
+      args:
+        APT_MIRROR: ${APT_MIRROR:-http://deb.debian.org/debian}
+        APT_SECURITY_MIRROR: ${APT_SECURITY_MIRROR:-http://deb.debian.org/debian-security}
     container_name: openchat-app
     env_file:
       - .env.example
@@ -88,10 +91,12 @@ services:
     restart: unless-stopped
 
   nginx:
-    image: ${OPENCHAT_NGINX_IMAGE:-openchat-nginx:latest}
+    image: openchat-nginx:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile.nginx
+      args:
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-https://dl-cdn.alpinelinux.org/alpine}
     container_name: openchat-nginx
     env_file:
       - .env.example
