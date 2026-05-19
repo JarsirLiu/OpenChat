@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import type { ChatMessage, ChatStreamEvent, ItemStatus, MessageContentPart } from '@openchat/protocol'
 import { normalizeStreamEvent } from '@openchat/protocol'
 import { authenticatedFetch } from '../../lib/auth'
@@ -56,7 +56,6 @@ const normalizeSessionMessages = (value: SessionDetailResponse['messages']): Cha
 
         for (const message of value) {
           const { id, role, turnId, status, createdAt, updatedAt } = message
-          const content = Array.isArray(message.content) ? message.content : []
 
           if (!id || !turnId || !status) {
             continue
@@ -65,6 +64,8 @@ const normalizeSessionMessages = (value: SessionDetailResponse['messages']): Cha
           if (role !== 'user' && role !== 'assistant' && role !== 'reasoning') {
             continue
           }
+
+          const content = Array.isArray(message.content) ? message.content : []
 
           const normalizedContent: MessageContentPart[] = content.flatMap((part): MessageContentPart[] => {
             if (!part || typeof part !== 'object') {
@@ -192,6 +193,15 @@ export function useChatStream({
     'connecting',
   )
   const eventSourceRef = useRef<EventSource | null>(null)
+  const handleEvent = useEffectEvent((event: ChatStreamEvent) => {
+    onEvent(event)
+  })
+  const handleHydrateMessages = useEffectEvent((messages: ChatMessage[]) => {
+    onHydrate(messages)
+  })
+  const handleHydrateSession = useEffectEvent((session: SessionListItem | null) => {
+    onHydrateSession(session)
+  })
 
   useEffect(() => {
     const eventSource = new EventSource(`/api/stream/${sessionId}`)
@@ -225,7 +235,7 @@ export function useChatStream({
         return
       }
 
-      onEvent(event)
+      handleEvent(event)
     })
 
     void (async () => {
@@ -240,8 +250,8 @@ export function useChatStream({
           return
         }
 
-        onHydrateSession(normalizeSession(payload.session))
-        onHydrate(normalizeSessionMessages(payload.messages))
+        handleHydrateSession(normalizeSession(payload.session))
+        handleHydrateMessages(normalizeSessionMessages(payload.messages))
       } catch {
         // Ignore hydration failures and fall back to live stream events.
       } finally {
@@ -251,7 +261,7 @@ export function useChatStream({
 
         bootstrapping = false
         queuedEvents.forEach((event) => {
-          onEvent(event)
+          handleEvent(event)
         })
       }
     })()
@@ -262,7 +272,7 @@ export function useChatStream({
       eventSource.close()
       eventSourceRef.current = null
     }
-  }, [onEvent, onHydrate, onHydrateSession, sessionId])
+  }, [sessionId])
 
   return {
     streamState,

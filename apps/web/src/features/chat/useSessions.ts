@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { authenticatedFetch, AuthError } from '../../lib/auth'
 
 export interface SessionListItem {
@@ -59,7 +59,22 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
     }
   }, [currentUserId, onUnauthorized])
 
-  const refresh = async () => {
+  const upsertSession = useCallback((nextSession: SessionListItem) => {
+    setSessions((current) => {
+      const existingIndex = current.findIndex((session) => session.id === nextSession.id)
+      if (existingIndex < 0) {
+        return [nextSession, ...current]
+      }
+
+      const merged = current.map((session, index) =>
+        index === existingIndex ? nextSession : session,
+      )
+
+      return merged.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    })
+  }, [])
+
+  const refresh = useCallback(async () => {
     if (!currentUserId) {
       setSessions([])
       setLoading(false)
@@ -85,9 +100,9 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentUserId, onUnauthorized])
 
-  const deleteSession = async (sessionId: string) => {
+  const deleteSession = useCallback(async (sessionId: string) => {
     const response = await authenticatedFetch(`/api/sessions/${sessionId}`, {
       method: 'DELETE',
     })
@@ -98,24 +113,9 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
     }
 
     setSessions((current) => current.filter((session) => session.id !== sessionId))
-  }
+  }, [])
 
-  const upsertSession = (nextSession: SessionListItem) => {
-    setSessions((current) => {
-      const existingIndex = current.findIndex((session) => session.id === nextSession.id)
-      if (existingIndex < 0) {
-        return [nextSession, ...current]
-      }
-
-      const merged = current.map((session, index) =>
-        index === existingIndex ? nextSession : session,
-      )
-
-      return merged.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-    })
-  }
-
-  const renameSession = async (sessionId: string, title: string) => {
+  const renameSession = useCallback(async (sessionId: string, title: string) => {
     const response = await authenticatedFetch(`/api/sessions/${sessionId}`, {
       method: 'PUT',
       body: JSON.stringify({ title }),
@@ -129,7 +129,7 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
     const payload = (await response.json()) as SessionListItem
     upsertSession(payload)
     return payload
-  }
+  }, [upsertSession])
 
   return {
     sessions,
