@@ -1,16 +1,29 @@
 # OpenChat Docker
 
-This directory contains both:
+This directory contains:
 
-- `docker-compose.yml`: full production-style stack with `nginx + app + postgres + minio`
+- `docker-compose.yml`: full production-style stack that pulls prebuilt app images
+- `docker-compose.local.yml`: full stack for local image builds
 - `docker-compose.middleware.yml`: local middleware only for host-run development
 
-## Full Stack
+## Full Stack From Registry
 
 ```bash
 cd docker
 cp .env.example .env
+docker compose pull app nginx
 docker compose up -d
+```
+
+Set `OPENCHAT_APP_IMAGE` and `OPENCHAT_NGINX_IMAGE` in `docker/.env` when using your own registry images.
+
+## Full Stack With Local Build
+
+```bash
+cd docker
+cp .env.example .env
+docker compose -f docker-compose.local.yml build app nginx
+docker compose -f docker-compose.local.yml up -d
 ```
 
 This stack starts:
@@ -86,8 +99,8 @@ OPENCHAT_NGINX_IMAGE=ccr.ccs.tencentyun.com/<namespace>/openchat-nginx:latest
 Then build and push manually:
 
 ```bash
-docker compose build app nginx
-docker compose push app nginx
+docker compose -f docker-compose.local.yml build app nginx
+docker compose -f docker-compose.local.yml push app nginx
 ```
 
 ## Notes
