@@ -1,5 +1,6 @@
 import {
   ChevronDown,
+  ChevronLeft,
   Folder,
   LoaderCircle,
   LogOut,
@@ -18,27 +19,31 @@ export function ChatSidebar({
   loading,
   error,
   currentUserInitial,
+  mobile = false,
   onSelect,
   onNewSession,
   onDeleteSession,
   onLogout,
+  onClose,
 }: {
   sessions: SessionListItem[]
   currentSessionId: string
   loading: boolean
   error: string | null
   currentUserInitial: string
+  mobile?: boolean
   onSelect: (sessionId: string) => void
   onNewSession: () => void
   onDeleteSession: (sessionId: string) => void
   onLogout: () => void
+  onClose?: () => void
 }) {
   const groupedSessions = useMemo(() => groupSessionsByRelativeTime(sessions), [sessions])
 
   return (
-    <aside className="flex w-[260px] flex-shrink-0 flex-col border-r border-gray-100 bg-[#f8f8f8] dark:border-gray-800 dark:bg-[#121212]">
+    <aside className="flex h-full w-[260px] max-w-[86vw] flex-shrink-0 flex-col border-r border-gray-100 bg-[#f8f8f8] dark:border-gray-800 dark:bg-[#121212]">
       <div className="flex min-h-0 flex-1 flex-col space-y-4 px-3 py-4">
-        <div className="cursor-pointer rounded-lg px-2 py-1.5 transition-colors hover:bg-black/5 dark:hover:bg-white/5">
+        <div className="flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors hover:bg-black/5 dark:hover:bg-white/5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="flex h-7 w-7 items-center justify-center rounded-md bg-black text-sm font-bold text-white dark:bg-white dark:text-black">
@@ -50,11 +55,24 @@ export function ChatSidebar({
             </div>
             <ChevronDown className="h-4 w-4 text-gray-400" />
           </div>
+          {mobile ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1 text-gray-400 transition hover:bg-black/5 hover:text-gray-600 dark:hover:bg-white/5 dark:hover:text-gray-200"
+              aria-label="Close sidebar"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          ) : null}
         </div>
 
         <button
           type="button"
-          onClick={onNewSession}
+          onClick={() => {
+            onNewSession()
+            onClose?.()
+          }}
           className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-[14px] text-gray-600 transition-colors hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5"
         >
           <MessageSquarePlus className="h-[18px] w-[18px] text-gray-500" />
@@ -115,7 +133,10 @@ export function ChatSidebar({
       <div className="p-3">
         <button
           type="button"
-          onClick={onLogout}
+          onClick={() => {
+            onClose?.()
+            onLogout()
+          }}
           className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-[14px] text-gray-600 transition-colors hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5"
         >
           <LogOut className="h-[18px] w-[18px]" />
@@ -167,7 +188,9 @@ function SessionGroup({
                 ? 'bg-[#e5f0ff] text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
                 : 'text-gray-700 hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5',
             )}
-            onClick={() => onSelect(session.id)}
+            onClick={() => {
+              onSelect(session.id)
+            }}
           >
             <div className="flex min-w-0 items-center gap-2.5">
               <Folder

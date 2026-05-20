@@ -26,6 +26,7 @@ export function ChatWorkspace({
   onOpenSession,
   onOpenNewSession,
 }: ChatWorkspaceProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -175,25 +176,64 @@ export function ChatWorkspace({
 
   return (
     <div className="flex h-screen overflow-hidden bg-white font-sans dark:bg-[#121212]">
-      <ChatSidebar
-        sessions={sessions}
-        currentSessionId={currentSession?.id ?? ''}
-        loading={sessionsLoading}
-        error={sessionsError}
-        currentUserInitial={(
-          currentUser.username?.slice(0, 1) || currentUser.email.slice(0, 1)
-        ).toUpperCase()}
-        onSelect={handleSelectSession}
-        onNewSession={startNewSession}
-        onDeleteSession={handleDeleteSession}
-        onLogout={onLogout}
-      />
+      {sidebarOpen ? (
+        <>
+          <div
+            className="fixed inset-0 z-30 bg-black/30 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="fixed inset-y-0 left-0 z-40 lg:hidden">
+            <ChatSidebar
+              sessions={sessions}
+              currentSessionId={currentSession?.id ?? ''}
+              loading={sessionsLoading}
+              error={sessionsError}
+              currentUserInitial={(
+                currentUser.username?.slice(0, 1) || currentUser.email.slice(0, 1)
+              ).toUpperCase()}
+              mobile
+              onClose={() => setSidebarOpen(false)}
+              onSelect={(sessionId) => {
+                setSidebarOpen(false)
+                handleSelectSession(sessionId)
+              }}
+              onNewSession={() => {
+                setSidebarOpen(false)
+                startNewSession()
+              }}
+              onDeleteSession={handleDeleteSession}
+              onLogout={onLogout}
+            />
+          </div>
+        </>
+      ) : null}
+
+      <div className="hidden lg:flex">
+        <ChatSidebar
+          sessions={sessions}
+          currentSessionId={currentSession?.id ?? ''}
+          loading={sessionsLoading}
+          error={sessionsError}
+          currentUserInitial={(
+            currentUser.username?.slice(0, 1) || currentUser.email.slice(0, 1)
+          ).toUpperCase()}
+          onSelect={handleSelectSession}
+          onNewSession={startNewSession}
+          onDeleteSession={handleDeleteSession}
+          onLogout={onLogout}
+        />
+      </div>
 
       <div className="flex min-w-0 flex-1 flex-col bg-white dark:bg-[#121212]">
         <ChatHeader 
           title={currentSession?.title?.trim() || '新对话'} 
           onDelete={() => currentSession && handleDeleteSession(currentSession.id)}
           settingsOpen={settingsOpen}
+          onOpenSidebar={() => {
+            setSettingsOpen(false)
+            setSidebarOpen(true)
+          }}
           onOpenSettings={() => setSettingsOpen(true)}
           onRename={openRenameDialog}
         />

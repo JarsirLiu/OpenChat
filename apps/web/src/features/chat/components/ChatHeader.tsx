@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { MoreHorizontal, Share2, SlidersHorizontal, Pencil, Trash } from 'lucide-react'
+import { Menu, MoreHorizontal, Share2, SlidersHorizontal, Pencil, Trash } from 'lucide-react'
 
 interface ChatHeaderProps {
   title: string
   onRename?: () => void
   onDelete?: () => void
   onOpenSettings?: () => void
+  onOpenSidebar?: () => void
   settingsOpen?: boolean
 }
 
@@ -14,6 +15,7 @@ export function ChatHeader({
   onRename,
   onDelete,
   onOpenSettings,
+  onOpenSidebar,
   settingsOpen = false,
 }: ChatHeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -22,6 +24,14 @@ export function ChatHeader({
     <div className="border-b border-gray-100 bg-white/80 p-4 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/80 sticky top-0 z-10">
       <div className="flex items-center justify-between">
         <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            className="rounded-md p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white lg:hidden"
+            aria-label="Open sidebar"
+            onClick={onOpenSidebar}
+          >
+            <Menu className="h-4 w-4" />
+          </button>
           <h1 className="truncate text-base font-semibold text-gray-900 dark:text-white">
             {title}
           </h1>

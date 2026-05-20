@@ -32,7 +32,7 @@ export function ChatLanding({
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 pt-4 text-xs text-gray-600 dark:text-gray-400">
+        <div className="grid grid-cols-1 gap-3 pt-4 text-xs text-gray-600 sm:grid-cols-2 dark:text-gray-400">
           <div className="cursor-pointer rounded-xl border border-gray-100 bg-white p-3 transition-colors hover:border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600">
             🚀 快速开始
           </div>

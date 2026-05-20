@@ -238,8 +238,8 @@ export function ChatComposer({
           className="min-h-[56px] max-h-[35vh] w-full resize-none bg-transparent px-4 pb-2 pt-4 text-[14px] leading-[1.75] text-gray-800 outline-none placeholder-gray-400 dark:text-gray-100 dark:placeholder-gray-500"
         />
 
-        <div className="flex items-center justify-between px-3 pb-3 pt-1">
-          <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-3 pt-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
             <input
               ref={fileInputRef}
               type="file"
@@ -295,7 +295,7 @@ export function ChatComposer({
               </button>
 
               {imageToolMenuOpen && (
-                <div className="absolute bottom-full left-0 z-50 mb-2 w-[320px] overflow-hidden rounded-xl border border-gray-100 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_10px_40px_rgba(0,0,0,0.4)]">
+                <div className="absolute bottom-full left-0 z-50 mb-2 w-[320px] max-w-[calc(100vw-32px)] overflow-hidden rounded-xl border border-gray-100 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_10px_40px_rgba(0,0,0,0.4)]">
                   <div className="flex h-[48px] items-center gap-2 border-b border-gray-100 px-4 dark:border-gray-800">
                     <Search className="h-4 w-4 flex-shrink-0 text-gray-400" />
                     <input
@@ -395,7 +395,7 @@ export function ChatComposer({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 self-end sm:self-auto">
             <div className="relative" ref={modelPanelRef}>
               <button
                 type="button"
@@ -418,7 +418,7 @@ export function ChatComposer({
                   size={20}
                   type={'avatar'}
                 />
-                <span className="max-w-[160px] truncate">{selectedModelLabel}</span>
+                <span className="max-w-[120px] truncate sm:max-w-[160px]">{selectedModelLabel}</span>
                 <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" strokeWidth={2} />
               </button>
 
