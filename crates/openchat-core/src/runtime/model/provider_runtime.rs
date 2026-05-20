@@ -1,8 +1,8 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use crate::{
-    runtime::tools::ImageGenerationRequest, ChatServiceError, GeneratedImage, ImageRuntime,
-    ModelEventStream, ModelRuntime, TurnModelRef, TurnPlan, TurnToolRef,
+    tools::ImageGenerationRequest, ChatServiceError, GeneratedImage, ImageRuntime,
+    ModelEventStream, OpenAiCompatibleRuntime, TurnModelRef, TurnPlan, TurnToolRef,
 };
 
 pub type ResolveTextAccessFuture<'a> =
@@ -50,7 +50,7 @@ pub struct ResolvedImageModelAccess {
 
 pub struct ModelProviderRuntime<R> {
     access_resolver: Arc<R>,
-    openai_compatible_runtime: ModelRuntime,
+    openai_compatible_runtime: OpenAiCompatibleRuntime,
 }
 
 pub struct ImageProviderRuntime<R> {
@@ -80,7 +80,10 @@ impl<R> ModelProviderRuntime<R>
 where
     R: TextModelAccessResolver,
 {
-    pub fn new(access_resolver: Arc<R>, openai_compatible_runtime: ModelRuntime) -> Self {
+    pub fn new(
+        access_resolver: Arc<R>,
+        openai_compatible_runtime: OpenAiCompatibleRuntime,
+    ) -> Self {
         Self {
             access_resolver,
             openai_compatible_runtime,

@@ -9,8 +9,8 @@ use openchat_account_core::{
 use openchat_catalog_core::{CatalogModel, CatalogService, CatalogTurnBuilder};
 use openchat_core::{
     ActiveTurnRegistry, ChatService, ChatServiceError, ImageProviderRuntime, ImageRuntime,
-    InMemorySessionStore, MediaStore, ModelMediaUrlResolver, ModelProviderRuntime, ModelRuntime,
-    OpenChatTurnExecutor, StoredMedia, ToolAccessService, ToolExecutor,
+    InMemorySessionStore, MediaStore, ModelMediaUrlResolver, ModelProviderRuntime,
+    OpenAiCompatibleRuntime, OpenChatTurnExecutor, StoredMedia, ToolAccessService, ToolExecutor,
 };
 use openchat_infra::db::Database;
 use openchat_infra::storage::{
@@ -279,7 +279,7 @@ impl AppState {
             authorizer.clone(),
             chat_store.clone(),
         ));
-        let model_runtime = ModelRuntime::new(media_store.clone());
+        let model_runtime = OpenAiCompatibleRuntime::new(media_store.clone());
         let image_runtime = ImageRuntime::new();
         let provider_runtime = ModelProviderRuntime::new(account_service.clone(), model_runtime);
         let image_provider_runtime =

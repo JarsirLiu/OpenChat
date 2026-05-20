@@ -1,5 +1,5 @@
 use crate::{
-    events::{
+    protocol::{
         serialize_event, ErrorDto, ImageGeneratedEvent, ItemMessageDeltaEvent, ItemStartedEvent,
         ItemToolCallArgumentsDeltaEvent, ItemToolCallCompletedEvent, ItemToolCallStartedEvent,
         MessageItemDto, ReasoningCompletedEvent, ReasoningDeltaEvent, ReasoningItemDto,

@@ -4,6 +4,7 @@ mod domain;
 mod error;
 mod media;
 mod runtime;
+mod tools;
 pub mod streaming;
 
 pub use adapters::context::{
@@ -13,7 +14,10 @@ pub use adapters::context::{
     user_content_to_json, user_content_to_outbound_parts, value_to_outbound_content_parts,
     OutboundContentPart, OutboundMessage, OutboundToolCall, SessionContext,
 };
-pub use application::{ChatService, SessionMessagesSnapshotPage, TurnBuilder, TurnRunner};
+pub use application::{
+    ActiveTurnRegistryPort, ChatRepository, ChatService, SessionMessagesSnapshotPage,
+    SessionRuntimeRegistry, TurnBuilder, TurnRunner,
+};
 pub use domain::{
     ChatRequest, SelectedTextModel, SelectedTool, TurnAccepted, TurnAttachment, TurnContext,
     TurnModelRef, TurnPlan, TurnTerminalReason, TurnTerminalReasonCode, TurnToolRef,
@@ -24,18 +28,19 @@ pub use media::{
     parse_media_assets_json, MediaAsset, MediaStore, ModelMediaUrlResolver, StoredMedia,
 };
 pub use runtime::{
-    ActiveTurnHandle, ActiveTurnRegistry, CatalogTool, GeneratedImage,
-    ImageGenerationToolHandler, ImageModelAccessResolver, ImageProviderRuntime, ImageRuntime,
-    ModelEventStream, ModelProviderRuntime, ModelRuntime, ModelStreamEvent,
+    ActiveTurnHandle, ActiveTurnRegistry, ImageModelAccessResolver, ImageProviderRuntime,
+    ModelEventStream, ModelProviderRuntime, ModelStreamEvent, OpenAiCompatibleRuntime,
     OpenChatTurnExecutor, ResolveImageAccessFuture, ResolveTextAccessFuture,
-    ResolveToolAccessFuture, ResolvedImageModelAccess, ResolvedTextModelAccess,
-    TextModelAccessResolver, ToolAccessDecision, ToolAccessOutcome, ToolAccessRequirement,
-    ToolAccessResolver, ToolAccessService, ToolCapability, ToolExecutionResult, ToolExecutor,
-    ToolFunctionSpec, ToolInvocation, ToolRegistry, ToolSpec, TurnExecution,
-    TurnExecutionFuture,
+    ResolvedImageModelAccess, ResolvedTextModelAccess, TextModelAccessResolver,
+};
+pub use tools::{
+    CatalogTool, GeneratedImage, ImageGenerationToolHandler, ImageRuntime, ResolveToolAccessFuture,
+    ToolAccessDecision, ToolAccessOutcome, ToolAccessRequirement, ToolAccessResolver,
+    ToolAccessService, ToolCapability, ToolExecutionResult, ToolExecutor, ToolFunctionSpec,
+    ToolInvocation, ToolRegistry, ToolSpec,
 };
 pub use streaming::{InMemorySessionStore, SessionRuntime, StreamEventPayload};
 
-pub mod events {
-    pub use crate::streaming::events::*;
+pub mod protocol {
+    pub use crate::streaming::protocol::*;
 }

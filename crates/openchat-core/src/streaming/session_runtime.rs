@@ -2,7 +2,10 @@ use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::{broadcast, RwLock};
 
-use crate::StreamEventPayload;
+#[derive(Clone)]
+pub struct StreamEventPayload {
+    pub data: String,
+}
 
 #[derive(Clone)]
 pub struct SessionRuntime {

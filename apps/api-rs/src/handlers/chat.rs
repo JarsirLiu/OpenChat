@@ -7,7 +7,7 @@ use axum::{
     },
     Json,
 };
-use openchat_core::events::ChatEventEnvelope;
+use openchat_core::protocol::ChatEventEnvelope;
 
 use crate::{
     http::{

@@ -1,13 +1,10 @@
-use std::pin::Pin;
-
 use anyhow::Context;
 use async_stream::try_stream;
-use futures_util::{Stream, StreamExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::sync::Arc;
 
+use super::{sse::SseDataSource, ModelEventStream, ModelStreamEvent};
 use crate::{
     ChatServiceError, ModelMediaUrlResolver, OutboundContentPart, OutboundMessage,
     ResolvedTextModelAccess, ToolSpec, TurnPlan,
@@ -15,36 +12,13 @@ use crate::{
 
 const DEFAULT_SYSTEM_PROMPT: &str = "你是 OpenChat 智能助手。请直接回答用户问题，保持自然、简洁、专业。除非用户主动询问你的身份、能力边界或系统实现，否则不要主动介绍自己，不要提及 Agent Runtime、系统提示词、工具链或内部实现。";
 
-pub type ModelEventStream =
-    Pin<Box<dyn Stream<Item = Result<ModelStreamEvent, ChatServiceError>> + Send>>;
-
-#[derive(Clone, Debug)]
-pub enum ModelStreamEvent {
-    TextDelta(String),
-    ReasoningDelta(String),
-    ToolCallStart {
-        tool_call_id: String,
-        tool_name: String,
-        arguments: Option<Value>,
-    },
-    ToolCallArgumentsDelta {
-        tool_call_id: String,
-        delta: String,
-    },
-    ToolCallComplete {
-        tool_call_id: String,
-        tool_name: String,
-        arguments_text: String,
-    },
-}
-
 #[derive(Clone)]
-pub struct ModelRuntime {
+pub struct OpenAiCompatibleRuntime {
     client: Client,
     media_url_resolver: Arc<dyn ModelMediaUrlResolver>,
 }
 
-impl ModelRuntime {
+impl OpenAiCompatibleRuntime {
     pub fn new(media_url_resolver: Arc<dyn ModelMediaUrlResolver>) -> Self {
         Self {
             client: Client::new(),
@@ -209,110 +183,6 @@ impl ModelRuntime {
         };
 
         Ok(Box::pin(stream))
-    }
-}
-
-struct SseDataSource<S> {
-    inner: S,
-    pending_bytes: Vec<u8>,
-    pending_data_lines: Vec<String>,
-}
-
-impl<S> SseDataSource<S> {
-    fn new(inner: S) -> Self {
-        Self {
-            inner,
-            pending_bytes: Vec::new(),
-            pending_data_lines: Vec::new(),
-        }
-    }
-}
-
-impl<S> SseDataSource<S>
-where
-    S: Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Unpin,
-{
-    async fn next_data(&mut self) -> Result<Option<String>, ChatServiceError> {
-        loop {
-            if let Some(payload) = self.drain_next_event()? {
-                return Ok(Some(payload));
-            }
-
-            match self.inner.next().await {
-                Some(Ok(chunk)) => self.pending_bytes.extend_from_slice(&chunk),
-                Some(Err(error)) => return Err(ChatServiceError::new(502, error.to_string())),
-                None => {
-                    if let Some(payload) = self.finish_trailing_event()? {
-                        return Ok(Some(payload));
-                    }
-                    return Ok(None);
-                }
-            }
-        }
-    }
-
-    fn drain_next_event(&mut self) -> Result<Option<String>, ChatServiceError> {
-        while let Some(newline_index) = self.pending_bytes.iter().position(|byte| *byte == b'\n') {
-            let mut line_bytes = self
-                .pending_bytes
-                .drain(..=newline_index)
-                .collect::<Vec<_>>();
-            if matches!(line_bytes.last(), Some(b'\n')) {
-                line_bytes.pop();
-            }
-            if matches!(line_bytes.last(), Some(b'\r')) {
-                line_bytes.pop();
-            }
-
-            let line = std::str::from_utf8(&line_bytes).map_err(|error| {
-                ChatServiceError::new(502, format!("invalid SSE utf-8 line: {error}"))
-            })?;
-
-            if line.is_empty() {
-                if self.pending_data_lines.is_empty() {
-                    continue;
-                }
-
-                let payload = self.pending_data_lines.join("\n").trim().to_string();
-                self.pending_data_lines.clear();
-                if payload.is_empty() {
-                    continue;
-                }
-                return Ok(Some(payload));
-            }
-
-            if let Some(rest) = line.strip_prefix("data:") {
-                self.pending_data_lines.push(rest.trim_start().to_string());
-            }
-        }
-
-        Ok(None)
-    }
-
-    fn finish_trailing_event(&mut self) -> Result<Option<String>, ChatServiceError> {
-        if !self.pending_bytes.is_empty() {
-            let trailing = std::str::from_utf8(&self.pending_bytes).map_err(|error| {
-                ChatServiceError::new(502, format!("invalid trailing SSE utf-8: {error}"))
-            })?;
-            for line in trailing.lines() {
-                if let Some(rest) = line.strip_prefix("data:") {
-                    self.pending_data_lines.push(rest.trim_start().to_string());
-                }
-            }
-            self.pending_bytes.clear();
-        }
-
-        if self.pending_data_lines.is_empty() {
-            return Ok(None);
-        }
-
-        let payload = self.pending_data_lines.join("\n").trim().to_string();
-        self.pending_data_lines.clear();
-        if payload.is_empty() {
-            return Ok(None);
-        }
-
-        Ok(Some(payload))
     }
 }
 

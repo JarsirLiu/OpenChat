@@ -1,7 +1,5 @@
 mod session_runtime;
-mod stream;
 
-pub mod events;
+pub mod protocol;
 
-pub use session_runtime::{InMemorySessionStore, SessionRuntime};
-pub use stream::StreamEventPayload;
+pub use session_runtime::{InMemorySessionStore, SessionRuntime, StreamEventPayload};

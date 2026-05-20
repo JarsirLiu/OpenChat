@@ -2,7 +2,7 @@ use openchat_infra::stores::{ChatStore, PersistedToolCall};
 use serde_json::json;
 
 use crate::{
-    runtime::execution::{
+    runtime::turn::{
         event_builder::{build_tool_call_completed_event, build_tool_call_item, send_event},
         helpers::now_string,
         loop_step_result::CompletedToolCall,

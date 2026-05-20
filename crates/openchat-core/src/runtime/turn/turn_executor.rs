@@ -4,7 +4,7 @@ use openchat_infra::stores::ChatStore;
 
 use crate::{
     user_content_to_json,
-    runtime::execution::{
+    runtime::turn::{
         event_builder::{
             build_message_item,
             build_message_started_event, build_reasoning_completed_event,
@@ -19,7 +19,7 @@ use crate::{
     },
     ActiveTurnHandle, ImageModelAccessResolver, ModelProviderRuntime, SessionRuntime,
     TextModelAccessResolver, ToolAccessResolver,
-    ToolExecutor, TurnExecution, TurnExecutionFuture, TurnPlan, TurnRunner, TurnTerminalReason,
+    ToolExecutor, TurnPlan, TurnRunner, TurnTerminalReason,
 };
 
 fn now_millis() -> u128 {
@@ -246,32 +246,6 @@ where
         )
         .await;
         session_title_generator.spawn_generate(plan, session_runtime);
-    }
-}
-
-impl<R> TurnExecution for OpenChatTurnExecutor<R>
-where
-    R: TextModelAccessResolver + ImageModelAccessResolver + ToolAccessResolver + 'static,
-{
-    fn run_turn(
-        &self,
-        plan: TurnPlan,
-        session_runtime: SessionRuntime,
-        active_turn: ActiveTurnHandle,
-    ) -> TurnExecutionFuture {
-        let chat_store = self.chat_store.clone();
-        let model_provider_runtime = self.model_provider_runtime.clone();
-        let tool_call_coordinator = self.tool_call_coordinator.clone();
-
-        Box::pin(Self::execute_turn(
-            chat_store,
-            model_provider_runtime,
-            tool_call_coordinator,
-            self.session_title_generator.clone(),
-            plan,
-            session_runtime,
-            active_turn,
-        ))
     }
 }
 

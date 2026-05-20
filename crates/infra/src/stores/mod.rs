@@ -11,7 +11,7 @@ pub use catalog_store::{
 };
 pub use chat_store::{
     ChatStore, PersistedMessage, PersistedSession, PersistedSessionMessage,
-    PersistedSessionToolCall, PersistedToolCall, PersistedTurnTerminalReason,
+    PersistedSessionToolCall, PersistedToolCall, PersistedTurnPage, PersistedTurnTerminalReason,
 };
 pub use custom_model_store::{CustomModelCreate, CustomModelStore, PersistedCustomModel};
 pub use media_store::{MediaObjectRecord, MediaObjectStore, PersistedMediaObject};

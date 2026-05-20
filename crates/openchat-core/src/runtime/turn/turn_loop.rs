@@ -5,7 +5,7 @@ use openchat_infra::stores::{ChatStore, PersistedToolCall};
 use tokio::time::{timeout, Duration};
 
 use crate::{
-    runtime::execution::{
+    runtime::turn::{
         event_builder::{
             build_image_generated_event, build_message_delta_event, build_reasoning_delta_event,
             build_reasoning_item, build_reasoning_started_event,

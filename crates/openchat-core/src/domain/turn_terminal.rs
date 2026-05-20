@@ -1,4 +1,4 @@
-use crate::events::TerminalReasonDto;
+use crate::protocol::TerminalReasonDto;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TurnTerminalReasonCode {

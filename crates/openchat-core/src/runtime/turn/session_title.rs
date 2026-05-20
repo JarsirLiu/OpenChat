@@ -4,7 +4,7 @@ use futures_util::StreamExt;
 use openchat_infra::stores::ChatStore;
 
 use crate::{
-    runtime::execution::{
+    runtime::turn::{
         event_builder::{build_session, build_session_updated_event, send_event},
         helpers::now_string,
     },

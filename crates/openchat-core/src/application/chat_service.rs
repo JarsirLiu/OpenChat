@@ -1,15 +1,17 @@
 use std::sync::Arc;
 
-use openchat_infra::stores::{ChatStore, PersistedSession};
+use openchat_infra::stores::{PersistedSession, PersistedTurnPage};
 use tokio::sync::broadcast;
 
 use crate::{
     build_session_context, collect_attached_tool_calls,
-    events::{MessageSnapshotDto, ToolCallSummaryDto},
+    protocol::{MessageSnapshotDto, ToolCallSummaryDto},
     normalize_session_history, parse_media_assets_json, session_history_window_size,
-    ActiveTurnRegistry, ChatRequest, ChatServiceError, InMemorySessionStore, SessionContext,
-    SessionRuntime, StreamEventPayload, TurnAccepted, TurnPlan,
+    ActiveTurnHandle, ChatRequest, ChatServiceError, SessionContext, SessionRuntime,
+    StreamEventPayload, TurnAccepted, TurnPlan,
 };
+
+use super::ports::{ActiveTurnRegistryPort, ChatRepository, SessionRuntimeRegistry};
 
 pub trait TurnBuilder: Send + Sync {
     fn build_turn(
@@ -27,9 +29,9 @@ pub struct SessionMessagesSnapshotPage {
 
 #[derive(Clone)]
 pub struct ChatService {
-    session_store: Arc<InMemorySessionStore>,
-    active_turns: Arc<ActiveTurnRegistry>,
-    chat_store: Arc<ChatStore>,
+    session_store: Arc<dyn SessionRuntimeRegistry>,
+    active_turns: Arc<dyn ActiveTurnRegistryPort>,
+    chat_store: Arc<dyn ChatRepository>,
     turn_builder: Arc<dyn TurnBuilder>,
     runtime: Arc<dyn TurnRunner>,
 }
@@ -39,15 +41,15 @@ pub trait TurnRunner: Send + Sync {
         &self,
         plan: TurnPlan,
         session_runtime: SessionRuntime,
-        active_turn: crate::ActiveTurnHandle,
+        active_turn: ActiveTurnHandle,
     );
 }
 
 impl ChatService {
     pub fn new(
-        session_store: Arc<InMemorySessionStore>,
-        active_turns: Arc<ActiveTurnRegistry>,
-        chat_store: Arc<ChatStore>,
+        session_store: Arc<dyn SessionRuntimeRegistry>,
+        active_turns: Arc<dyn ActiveTurnRegistryPort>,
+        chat_store: Arc<dyn ChatRepository>,
         turn_builder: Arc<dyn TurnBuilder>,
         runtime: Arc<dyn TurnRunner>,
     ) -> Self {
@@ -203,7 +205,7 @@ impl ChatService {
         self.reconcile_session_runtime_state(user_id, session_id)
             .await?;
 
-        let turn_page = self
+        let turn_page: PersistedTurnPage = self
             .chat_store
             .list_session_turns_page(
                 user_id,
