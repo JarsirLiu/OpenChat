@@ -21,6 +21,7 @@ interface ProviderSettingsDialogProps {
   onClose: () => void
   onSaved: () => Promise<void> | void
   onUnauthorized: () => void
+  autoFocusApiKey?: boolean
 }
 
 type ProviderFormState = {
@@ -56,6 +57,7 @@ export function ProviderSettingsDialog({
   onClose,
   onSaved,
   onUnauthorized,
+  autoFocusApiKey = false,
 }: ProviderSettingsDialogProps) {
   const [form, setForm] = useState<ProviderFormState>({
     apiKey: '',
@@ -79,6 +81,7 @@ export function ProviderSettingsDialog({
   const [providerApiKeyVisible, setProviderApiKeyVisible] = useState(false)
   const [customModelApiKeyVisible, setCustomModelApiKeyVisible] = useState(false)
   const modelTypePanelRef = useRef<HTMLDivElement | null>(null)
+  const providerApiKeyInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!isOpen) {
@@ -170,6 +173,19 @@ export function ProviderSettingsDialog({
 
     return () => window.clearTimeout(timeout)
   }, [feedback])
+
+  useEffect(() => {
+    if (!isOpen || loading || !autoFocusApiKey) {
+      return
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      providerApiKeyInputRef.current?.focus()
+      providerApiKeyInputRef.current?.select()
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [autoFocusApiKey, isOpen, loading])
 
   const sortedCustomModels = useMemo(
     () =>
@@ -435,7 +451,7 @@ export function ProviderSettingsDialog({
                         >
                           colorect.tech/tokens
                         </a>{' '}
-                        获取 API Key，保存后使用模型。
+                        获取 API Key，充值后在此填写，并使用模型。
                       </p>
                     </div>
                   </div>
@@ -457,6 +473,7 @@ export function ProviderSettingsDialog({
                       ) : null}
                       <div className="relative">
                         <input
+                          ref={providerApiKeyInputRef}
                           type={providerApiKeyInputType}
                           value={providerApiKeyDisplayValue}
                           onChange={(event) =>

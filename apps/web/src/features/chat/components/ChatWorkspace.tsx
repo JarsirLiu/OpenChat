@@ -30,6 +30,7 @@ export function ChatWorkspace({
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [renamePending, setRenamePending] = useState(false)
+  const hasAutoOpenedSettingsRef = useRef(false)
   const {
     catalogErrorCode,
     catalogLoading,
@@ -126,6 +127,17 @@ export function ChatWorkspace({
       setSettingsOpen(true)
     }
   }, [catalogErrorCode, requestErrorCode, runtimeState.error?.code])
+
+  useEffect(() => {
+    if (hasAutoOpenedSettingsRef.current || catalogLoading || settingsOpen) {
+      return
+    }
+
+    if (selectedTextModel?.available === false) {
+      hasAutoOpenedSettingsRef.current = true
+      setSettingsOpen(true)
+    }
+  }, [catalogLoading, selectedTextModel?.available, settingsOpen])
 
   useEffect(() => {
     if (!renameDialogOpen) {
@@ -242,6 +254,7 @@ export function ChatWorkspace({
         onClose={() => setSettingsOpen(false)}
         onSaved={refreshCatalog}
         onUnauthorized={onUnauthorized}
+        autoFocusApiKey
       />
 
       {renameDialogOpen ? (
