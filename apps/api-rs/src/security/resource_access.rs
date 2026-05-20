@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use openchat_infra::stores::ChatStore;
 use openchat_security_core::{
-    Action, AuthContext, Authorizer, AuthorizationError, ResourceDescriptor, ResourceKind,
+    Action, AuthContext, AuthorizationError, Authorizer, ResourceDescriptor, ResourceKind,
     ResourceOwner, ResourceVisibility,
 };
 
@@ -49,4 +49,3 @@ impl ResourceAccessService {
         self.authorizer.authorize(auth, action, &resource)
     }
 }
-

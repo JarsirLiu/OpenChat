@@ -260,34 +260,30 @@ impl CustomModelStore {
         model_config_id: &str,
     ) -> anyhow::Result<bool> {
         let rows_affected = match self.pool.as_ref() {
-            DatabasePool::Compat(pool) => {
-                sqlx::query(
-                    r#"
+            DatabasePool::Compat(pool) => sqlx::query(
+                r#"
                     DELETE FROM user_custom_models
                     WHERE user_id = ?1 AND model_config_id = ?2
                     "#,
-                )
-                .bind(user_id)
-                .bind(model_config_id)
-                .execute(pool)
-                .await
-                .context("failed to delete custom model")?
-                .rows_affected()
-            }
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(
-                    r#"
+            )
+            .bind(user_id)
+            .bind(model_config_id)
+            .execute(pool)
+            .await
+            .context("failed to delete custom model")?
+            .rows_affected(),
+            DatabasePool::Postgres(pool) => sqlx::query(
+                r#"
                     DELETE FROM user_custom_models
                     WHERE user_id = $1 AND model_config_id = $2
                     "#,
-                )
-                .bind(user_id)
-                .bind(model_config_id)
-                .execute(pool)
-                .await
-                .context("failed to delete custom model")?
-                .rows_affected()
-            }
+            )
+            .bind(user_id)
+            .bind(model_config_id)
+            .execute(pool)
+            .await
+            .context("failed to delete custom model")?
+            .rows_affected(),
         };
 
         Ok(rows_affected > 0)
@@ -334,4 +330,3 @@ fn decrypt_secret(key_bytes: &[u8; 32], encoded: &str) -> anyhow::Result<String>
         .map_err(|_| anyhow!("failed to decrypt custom model secret"))?;
     String::from_utf8(plaintext).context("custom model secret is not valid utf-8")
 }
-

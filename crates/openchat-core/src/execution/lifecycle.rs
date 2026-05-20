@@ -9,8 +9,7 @@ use crate::{
         },
         helpers::now_string,
     },
-    TurnTerminalReason,
-    SessionRuntime,
+    SessionRuntime, TurnTerminalReason,
 };
 
 use super::super::turn_control::ActiveTurnHandle;
@@ -55,13 +54,15 @@ pub async fn finalize_turn(
                 ),
             );
             let _ = chat_store
-                .complete_turn(active_turn.turn_id(), active_turn.session_id(), "completed", None)
+                .complete_turn(
+                    active_turn.turn_id(),
+                    active_turn.session_id(),
+                    "completed",
+                    None,
+                )
                 .await;
         }
-        TurnTerminalState::Interrupted {
-            started_at,
-            reason,
-        } => {
+        TurnTerminalState::Interrupted { started_at, reason } => {
             let completed_at = now_string();
             let turn = build_turn(
                 active_turn.turn_id().to_string(),
@@ -147,4 +148,3 @@ pub async fn emit_session_updated(
 
     Ok(())
 }
-

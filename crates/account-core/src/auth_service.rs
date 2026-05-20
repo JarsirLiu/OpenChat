@@ -105,12 +105,14 @@ impl AuthService {
             return Err(AuthError::new(401, "Authentication required"));
         };
 
-        self.ensure_refresh_token_not_expired(&refresh_record).await?;
+        self.ensure_refresh_token_not_expired(&refresh_record)
+            .await?;
         self.store
             .revoke_refresh_token(refresh_token.as_str())
             .await
             .map_err(internal_error)?;
-        self.issue_session(from_stored_user(refresh_record.user)).await
+        self.issue_session(from_stored_user(refresh_record.user))
+            .await
     }
 
     pub async fn current_user(&self, access_token: &str) -> Result<AuthUser, AuthError> {
@@ -328,4 +330,3 @@ mod tests {
         assert_eq!(claims.sub, "user_1");
     }
 }
-

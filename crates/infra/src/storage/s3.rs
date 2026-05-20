@@ -91,7 +91,14 @@ impl ObjectStore for S3CompatibleObjectStore {
     }
 
     async fn get_bytes(&self, key: &str) -> Result<Option<RetrievedObject>> {
-        let response = match self.client.get_object().bucket(&self.bucket).key(key).send().await {
+        let response = match self
+            .client
+            .get_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .send()
+            .await
+        {
             Ok(response) => response,
             Err(error) => {
                 let message = error.to_string();

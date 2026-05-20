@@ -30,7 +30,13 @@ impl AuthCookieManager {
     }
 
     pub fn build_access_cookie(&self, token: &str) -> Cookie<'static> {
-        self.build_cookie(ACCESS_COOKIE_NAME, token.to_string(), true, "/", ACCESS_TOKEN_TTL_MILLIS)
+        self.build_cookie(
+            ACCESS_COOKIE_NAME,
+            token.to_string(),
+            true,
+            "/",
+            ACCESS_TOKEN_TTL_MILLIS,
+        )
     }
 
     pub fn build_refresh_cookie(&self, token: &str) -> Cookie<'static> {
@@ -44,7 +50,13 @@ impl AuthCookieManager {
     }
 
     pub fn build_csrf_cookie(&self, token: &str) -> Cookie<'static> {
-        self.build_cookie(CSRF_COOKIE_NAME, token.to_string(), false, "/", REFRESH_TOKEN_TTL_MILLIS)
+        self.build_cookie(
+            CSRF_COOKIE_NAME,
+            token.to_string(),
+            false,
+            "/",
+            REFRESH_TOKEN_TTL_MILLIS,
+        )
     }
 
     pub fn clear_access_cookie(&self) -> Cookie<'static> {

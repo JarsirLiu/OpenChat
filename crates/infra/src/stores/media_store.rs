@@ -122,4 +122,3 @@ fn now_millis_i64() -> i64 {
         .unwrap_or_default();
     elapsed.as_millis().try_into().unwrap_or(i64::MAX)
 }
-

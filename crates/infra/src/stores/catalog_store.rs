@@ -89,12 +89,20 @@ impl CatalogStore {
 
         match self.pool.as_ref() {
             DatabasePool::Compat(pool) => {
-                sqlx::query("DELETE FROM catalog_models").execute(pool).await?;
-                sqlx::query("DELETE FROM catalog_tools").execute(pool).await?;
+                sqlx::query("DELETE FROM catalog_models")
+                    .execute(pool)
+                    .await?;
+                sqlx::query("DELETE FROM catalog_tools")
+                    .execute(pool)
+                    .await?;
             }
             DatabasePool::Postgres(pool) => {
-                sqlx::query("DELETE FROM catalog_models").execute(pool).await?;
-                sqlx::query("DELETE FROM catalog_tools").execute(pool).await?;
+                sqlx::query("DELETE FROM catalog_models")
+                    .execute(pool)
+                    .await?;
+                sqlx::query("DELETE FROM catalog_tools")
+                    .execute(pool)
+                    .await?;
             }
         }
 
@@ -320,4 +328,3 @@ impl CatalogStore {
         }
     }
 }
-

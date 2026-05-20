@@ -240,4 +240,3 @@ mod tests {
         assert!(!text.contains("https://example.com/image.png"));
     }
 }
-

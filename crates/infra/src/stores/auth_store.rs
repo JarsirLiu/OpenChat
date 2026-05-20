@@ -65,7 +65,8 @@ impl AuthStore {
             email: "demo@openchat.local".into(),
             is_admin: true,
         };
-        self.insert_user(demo, hash_password("openchat-demo")?).await
+        self.insert_user(demo, hash_password("openchat-demo")?)
+            .await
     }
 
     pub async fn insert_user(
@@ -223,7 +224,11 @@ impl AuthStore {
         }
     }
 
-    pub async fn store_refresh_token(&self, user_id: &str, refresh_token: String) -> anyhow::Result<()> {
+    pub async fn store_refresh_token(
+        &self,
+        user_id: &str,
+        refresh_token: String,
+    ) -> anyhow::Result<()> {
         let created_at = now_millis_i64();
         match self.pool.as_ref() {
             DatabasePool::Compat(pool) => {
@@ -372,4 +377,3 @@ fn hash_password(password: &str) -> anyhow::Result<String> {
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     Ok(hash.to_string())
 }
-

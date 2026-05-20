@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use openchat_core::ChatServiceError;
 use openchat_infra::stores::{CustomModelCreate, CustomModelStore};
@@ -147,7 +147,9 @@ fn validate_custom_model(
             "A custom model name is required",
         ));
     }
-    if normalized_model_name.starts_with("custom:") || normalized_model_name.starts_with("openchat:") {
+    if normalized_model_name.starts_with("custom:")
+        || normalized_model_name.starts_with("openchat:")
+    {
         return Err(ChatServiceError::new(
             400,
             "Custom model names cannot use reserved prefixes",
@@ -244,4 +246,3 @@ mod tests {
         assert!(error.message.contains("duplicate predefined models"));
     }
 }
-

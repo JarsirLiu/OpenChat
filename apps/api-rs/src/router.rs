@@ -76,7 +76,13 @@ pub fn build_router(state: AppState, config: &AppConfig) -> Router {
                     header::CONTENT_TYPE,
                     HeaderName::from_static("x-csrf-token"),
                 ])
-                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS]),
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ]),
         )
     };
 

@@ -28,7 +28,9 @@ pub async fn get_media(
 ) -> impl IntoResponse {
     let owner_user_id = match state.media_store.get_media_owner(path.as_str()).await {
         Ok(Some(user_id)) => user_id,
-        Ok(None) => return error_response(StatusCode::NOT_FOUND, MEDIA_NOT_FOUND, "Media not found"),
+        Ok(None) => {
+            return error_response(StatusCode::NOT_FOUND, MEDIA_NOT_FOUND, "Media not found")
+        }
         Err(error) => {
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -45,7 +47,11 @@ pub async fn get_media(
     let signed_authorized = query
         .sig
         .as_deref()
-        .map(|signature| state.media_store.verify_media_signature(path.as_str(), signature))
+        .map(|signature| {
+            state
+                .media_store
+                .verify_media_signature(path.as_str(), signature)
+        })
         .unwrap_or(false);
 
     if !browser_authorized && !signed_authorized {

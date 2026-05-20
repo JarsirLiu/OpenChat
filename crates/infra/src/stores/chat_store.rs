@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use crate::db::DatabasePool;
 use anyhow::Context;
 use serde_json::Value;
 use sqlx::QueryBuilder;
-use crate::db::DatabasePool;
 
 fn now_millis_i64() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -206,11 +206,13 @@ impl ChatStore {
                 .execute(pool)
                 .await?;
 
-                sqlx::query("UPDATE sessions SET status = 'running', updated_at = ?2 WHERE id = ?1")
-                    .bind(session_id)
-                    .bind(now)
-                    .execute(pool)
-                    .await?;
+                sqlx::query(
+                    "UPDATE sessions SET status = 'running', updated_at = ?2 WHERE id = ?1",
+                )
+                .bind(session_id)
+                .bind(now)
+                .execute(pool)
+                .await?;
             }
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
@@ -229,11 +231,13 @@ impl ChatStore {
                 .execute(pool)
                 .await?;
 
-                sqlx::query("UPDATE sessions SET status = 'running', updated_at = $2 WHERE id = $1")
-                    .bind(session_id)
-                    .bind(now)
-                    .execute(pool)
-                    .await?;
+                sqlx::query(
+                    "UPDATE sessions SET status = 'running', updated_at = $2 WHERE id = $1",
+                )
+                .bind(session_id)
+                .bind(now)
+                .execute(pool)
+                .await?;
             }
         }
 
@@ -464,7 +468,11 @@ impl ChatStore {
         Ok(())
     }
 
-    pub async fn reconcile_session_items(&self, user_id: &str, session_id: &str) -> anyhow::Result<()> {
+    pub async fn reconcile_session_items(
+        &self,
+        user_id: &str,
+        session_id: &str,
+    ) -> anyhow::Result<()> {
         let now = now_millis_i64();
         match self.pool.as_ref() {
             DatabasePool::Compat(pool) => {
@@ -856,13 +864,8 @@ impl ChatStore {
         user_id: &str,
         session_id: &str,
     ) -> anyhow::Result<Option<PersistedSession>> {
-        self.get_session_with_clause(
-            session_id,
-            Some(ScopedSessionFilter {
-                user_id,
-            }),
-        )
-        .await
+        self.get_session_with_clause(session_id, Some(ScopedSessionFilter { user_id }))
+            .await
     }
 
     pub async fn get_session_unscoped(
@@ -923,34 +926,30 @@ impl ChatStore {
 
     pub async fn delete_session(&self, user_id: &str, session_id: &str) -> anyhow::Result<bool> {
         let rows_affected = match self.pool.as_ref() {
-            DatabasePool::Compat(pool) => {
-                sqlx::query(
-                    r#"
+            DatabasePool::Compat(pool) => sqlx::query(
+                r#"
                     DELETE FROM sessions
                     WHERE id = ?1 AND user_id = ?2
                     "#,
-                )
-                .bind(session_id)
-                .bind(user_id)
-                .execute(pool)
-                .await
-                .context("failed to delete session")?
-                .rows_affected()
-            }
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(
-                    r#"
+            )
+            .bind(session_id)
+            .bind(user_id)
+            .execute(pool)
+            .await
+            .context("failed to delete session")?
+            .rows_affected(),
+            DatabasePool::Postgres(pool) => sqlx::query(
+                r#"
                     DELETE FROM sessions
                     WHERE id = $1 AND user_id = $2
                     "#,
-                )
-                .bind(session_id)
-                .bind(user_id)
-                .execute(pool)
-                .await
-                .context("failed to delete session")?
-                .rows_affected()
-            }
+            )
+            .bind(session_id)
+            .bind(user_id)
+            .execute(pool)
+            .await
+            .context("failed to delete session")?
+            .rows_affected(),
         };
 
         Ok(rows_affected > 0)
@@ -1256,7 +1255,10 @@ impl ChatStore {
 
         messages.sort_by(|left, right| {
             let left_order = turn_order.get(&left.turn_id).copied().unwrap_or(usize::MAX);
-            let right_order = turn_order.get(&right.turn_id).copied().unwrap_or(usize::MAX);
+            let right_order = turn_order
+                .get(&right.turn_id)
+                .copied()
+                .unwrap_or(usize::MAX);
             left_order
                 .cmp(&right_order)
                 .then_with(|| left.created_at.cmp(&right.created_at))
@@ -1440,7 +1442,10 @@ impl ChatStore {
 
         tool_calls.sort_by(|left, right| {
             let left_order = turn_order.get(&left.turn_id).copied().unwrap_or(usize::MAX);
-            let right_order = turn_order.get(&right.turn_id).copied().unwrap_or(usize::MAX);
+            let right_order = turn_order
+                .get(&right.turn_id)
+                .copied()
+                .unwrap_or(usize::MAX);
             left_order
                 .cmp(&right_order)
                 .then_with(|| left.id.cmp(&right.id))
@@ -1453,4 +1458,3 @@ impl ChatStore {
 struct ScopedSessionFilter<'a> {
     user_id: &'a str,
 }
-

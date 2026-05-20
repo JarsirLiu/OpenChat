@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -13,14 +13,13 @@ use openchat_core::{
     OpenChatTurnExecutor, StoredMedia, ToolAccessService, ToolExecutor,
 };
 use openchat_infra::db::Database;
-use openchat_infra::stores::{
-    CatalogModelRecord, CatalogToolRecord, MediaObjectRecord, AuthStore,
-    CatalogStore, ChatStore, CustomModelStore, MediaObjectStore,
-    UserProviderApiKeyStore,
-};
 use openchat_infra::storage::{
     build_object_store, DynObjectStore, LocalStorageConfig, RetrievedObject, S3StorageConfig,
     StorageBackendConfig,
+};
+use openchat_infra::stores::{
+    AuthStore, CatalogModelRecord, CatalogStore, CatalogToolRecord, ChatStore, CustomModelStore,
+    MediaObjectRecord, MediaObjectStore, UserProviderApiKeyStore,
 };
 use openchat_security_core::{
     AccessTokenAuthenticator, Authorizer, OwnershipAuthorizer, ResourceTokenService,
@@ -155,7 +154,10 @@ impl MediaStore for AppMediaStore {
     ) -> core::pin::Pin<
         Box<dyn core::future::Future<Output = Result<StoredMedia, ChatServiceError>> + Send + 'a>,
     > {
-        Box::pin(async move { self.put_owned_bytes(key, bytes, content_type, owner_user_id, session_id).await })
+        Box::pin(async move {
+            self.put_owned_bytes(key, bytes, content_type, owner_user_id, session_id)
+                .await
+        })
     }
 }
 
@@ -230,9 +232,8 @@ impl AppState {
         ));
         let chat_store = Arc::new(ChatStore::new(pool.clone()));
         let media_object_store = Arc::new(MediaObjectStore::new(pool));
-        let resource_token_service = Arc::new(ResourceTokenService::new(
-            config.auth_secret_key.as_str(),
-        ));
+        let resource_token_service =
+            Arc::new(ResourceTokenService::new(config.auth_secret_key.as_str()));
         let storage_config = build_storage_config(config);
         let object_store = build_object_store(&storage_config).await?;
         let public_base_url = config

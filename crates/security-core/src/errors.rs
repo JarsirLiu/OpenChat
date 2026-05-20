@@ -1,4 +1,7 @@
-use std::{error::Error, fmt::{Display, Formatter}};
+use std::{
+    error::Error,
+    fmt::{Display, Formatter},
+};
 
 use crate::{Action, ResourceKind};
 
@@ -56,7 +59,11 @@ pub struct AuthorizationError {
 impl AuthorizationError {
     pub fn forbidden(action: Action, resource_kind: ResourceKind) -> Self {
         Self {
-            message: format!("Not allowed to {} {}", action.as_str(), resource_kind.as_str()),
+            message: format!(
+                "Not allowed to {} {}",
+                action.as_str(),
+                resource_kind.as_str()
+            ),
         }
     }
 }

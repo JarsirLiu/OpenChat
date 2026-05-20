@@ -1,4 +1,6 @@
-use crate::{Action, AuthContext, AuthorizationError, ResourceDescriptor, ResourceOwner, ResourceVisibility};
+use crate::{
+    Action, AuthContext, AuthorizationError, ResourceDescriptor, ResourceOwner, ResourceVisibility,
+};
 
 pub trait Authorizer: Send + Sync {
     fn authorize(
@@ -51,7 +53,10 @@ impl Authorizer for OwnershipAuthorizer {
 #[cfg(test)]
 mod tests {
     use super::{Authorizer, OwnershipAuthorizer};
-    use crate::{Action, AuthContext, AuthMethod, AuthSubject, ResourceDescriptor, ResourceKind, ResourceOwner, ResourceVisibility};
+    use crate::{
+        Action, AuthContext, AuthMethod, AuthSubject, ResourceDescriptor, ResourceKind,
+        ResourceOwner, ResourceVisibility,
+    };
 
     fn user_auth(user_id: &str) -> AuthContext {
         AuthContext::new(

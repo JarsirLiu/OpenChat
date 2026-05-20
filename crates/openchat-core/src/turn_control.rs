@@ -1,4 +1,7 @@
-use std::{collections::{HashMap, HashSet}, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -25,7 +28,9 @@ impl ActiveTurnHandle {
     }
 
     pub async fn finish(&self) {
-        self.registry.unregister(self.session_id(), self.turn_id()).await;
+        self.registry
+            .unregister(self.session_id(), self.turn_id())
+            .await;
     }
 }
 

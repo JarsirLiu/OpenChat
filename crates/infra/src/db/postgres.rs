@@ -26,8 +26,7 @@ pub(crate) async fn migrate(pool: &PgPool) -> anyhow::Result<()> {
         "TEXT NOT NULL DEFAULT 'openai_compatible'",
     )
     .await?;
-    ensure_postgres_column(pool, "catalog_tools", "model", "TEXT NOT NULL DEFAULT ''")
-        .await?;
+    ensure_postgres_column(pool, "catalog_tools", "model", "TEXT NOT NULL DEFAULT ''").await?;
     ensure_postgres_column(pool, "tool_calls", "parent_item_id", "TEXT").await?;
     ensure_postgres_column(pool, "tool_calls", "media_json", "TEXT").await?;
     ensure_postgres_column(pool, "turns", "terminal_reason_code", "TEXT").await?;
@@ -59,12 +58,16 @@ pub(crate) async fn migrate(pool: &PgPool) -> anyhow::Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_turns_user_session ON turns(user_id, session_id)")
         .execute(pool)
         .await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_messages_user_session ON messages(user_id, session_id)")
-        .execute(pool)
-        .await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tool_calls_user_session ON tool_calls(user_id, session_id)")
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_messages_user_session ON messages(user_id, session_id)",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_tool_calls_user_session ON tool_calls(user_id, session_id)",
+    )
+    .execute(pool)
+    .await?;
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS media_objects (

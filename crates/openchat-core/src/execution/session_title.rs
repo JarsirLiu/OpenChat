@@ -151,7 +151,11 @@ where
             tool_list: Vec::new(),
         };
 
-        let mut stream = self.model_provider_runtime.stream_text(&title_plan).await.ok()?;
+        let mut stream = self
+            .model_provider_runtime
+            .stream_text(&title_plan)
+            .await
+            .ok()?;
         let mut title = String::new();
 
         while let Some(event) = stream.next().await {
@@ -196,7 +200,10 @@ fn normalize_generated_title(raw: &str) -> Option<String> {
 
 fn fallback_title_from_prompt(prompt: &str) -> String {
     let compact = prompt.split_whitespace().collect::<String>();
-    let fallback = compact.chars().take(FALLBACK_TITLE_CHARS).collect::<String>();
+    let fallback = compact
+        .chars()
+        .take(FALLBACK_TITLE_CHARS)
+        .collect::<String>();
     if fallback.is_empty() {
         DEFAULT_EMPTY_TITLE.to_string()
     } else {
@@ -211,4 +218,3 @@ fn build_title_prompt(user_prompt: &str) -> String {
         user_prompt.trim()
     )
 }
-

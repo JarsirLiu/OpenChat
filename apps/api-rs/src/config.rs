@@ -60,8 +60,9 @@ impl AppConfig {
                         .collect()
                 })
                 .unwrap_or_default(),
-            database_url: env::var("OPENCHAT_DATABASE_URL")
-                .unwrap_or_else(|_| "postgresql://openchat:openchat123456@localhost:5432/openchat".to_string()),
+            database_url: env::var("OPENCHAT_DATABASE_URL").unwrap_or_else(|_| {
+                "postgresql://openchat:openchat123456@localhost:5432/openchat".to_string()
+            }),
             public_base_url: env::var("OPENCHAT_PUBLIC_BASE_URL")
                 .ok()
                 .map(|value| value.trim().trim_end_matches('/').to_string())
