@@ -232,23 +232,32 @@ export function ChatWorkspace({
   return (
     <>
       {isMobile ? (
-        <ChatWorkspaceMobile
-          sessions={sessions}
-          currentSessionId={currentSession?.id ?? ''}
-          currentUserInitial={currentUserInitial}
-          sessionsLoading={sessionsLoading}
-          sessionsError={sessionsError}
-          title={currentTitle}
-          settingsOpen={settingsOpen}
-          onDeleteCurrentSession={currentSessionDeleteHandler}
-          onLogout={onLogout}
-          onNewSession={startNewSession}
-          onOpenRename={openRenameDialog}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onSelectSession={handleSelectSession}
-          onDeleteSession={handleDeleteSession}
-          mainPane={mainPane}
-        />
+        <>
+          <ChatWorkspaceMobile
+            sessions={sessions}
+            currentSessionId={currentSession?.id ?? ''}
+            currentUserInitial={currentUserInitial}
+            sessionsLoading={sessionsLoading}
+            sessionsError={sessionsError}
+            title={currentTitle}
+            settingsOpen={settingsOpen}
+            onDeleteCurrentSession={currentSessionDeleteHandler}
+            onLogout={onLogout}
+            onNewSession={startNewSession}
+            onOpenRename={openRenameDialog}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onSelectSession={handleSelectSession}
+            onDeleteSession={handleDeleteSession}
+            mainPane={mainPane}
+          />
+          <ProviderSettingsDialog
+            isOpen={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            onSaved={refreshCatalog}
+            onUnauthorized={onUnauthorized}
+            autoFocusApiKey
+          />
+        </>
       ) : (
         <ChatWorkspaceDesktop
           sessions={sessions}
@@ -266,16 +275,17 @@ export function ChatWorkspace({
           onSelectSession={handleSelectSession}
           onDeleteSession={handleDeleteSession}
           mainPane={mainPane}
+          settingsPanel={
+            <ProviderSettingsDialog
+              isOpen={settingsOpen}
+              onClose={() => setSettingsOpen(false)}
+              onSaved={refreshCatalog}
+              onUnauthorized={onUnauthorized}
+              autoFocusApiKey
+            />
+          }
         />
       )}
-
-      <ProviderSettingsDialog
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onSaved={refreshCatalog}
-        onUnauthorized={onUnauthorized}
-        autoFocusApiKey
-      />
 
       <RenameSessionDialog
         isOpen={renameDialogOpen}

@@ -32,6 +32,7 @@ export interface ChatWorkspaceMainPaneProps {
   onSelectModel: (modelKey: string) => void
   onSubmit: () => void
   onUploadImages: (files: File[]) => Promise<void>
+  desktop?: boolean
 }
 
 export function ChatWorkspaceMainPane({
@@ -53,6 +54,7 @@ export function ChatWorkspaceMainPane({
   requestPending,
   runtimeMessagesEmpty,
   runtimeState,
+  desktop = false,
   selectedImageToolAvailable,
   selectedImageToolKey,
   selectedImageToolLabel,
@@ -68,13 +70,21 @@ export function ChatWorkspaceMainPane({
     <>
       <div
         ref={onScrollContainerReady}
-        className={runtimeMessagesEmpty ? 'min-h-0 flex-1 overflow-y-auto' : 'flex-1 overflow-y-auto'}
+        className={
+          runtimeMessagesEmpty
+            ? 'min-h-0 flex-1 overflow-y-auto px-3 sm:px-4'
+            : 'flex-1 overflow-y-auto'
+        }
       >
         <div
           className={
             runtimeMessagesEmpty
-              ? 'mx-auto flex min-h-full w-full max-w-[800px] flex-col px-4 py-4 sm:px-6 sm:py-6'
-              : 'mx-auto w-full max-w-[800px] px-4 py-4 sm:px-6 sm:py-6'
+              ? `mx-auto flex min-h-full w-full flex-col py-4 sm:py-6 ${
+                  desktop ? 'lg:max-w-[800px]' : 'max-w-[800px]'
+                }`
+              : `mx-auto w-full px-4 py-4 sm:px-6 sm:py-6 ${
+                  desktop ? 'lg:max-w-[800px] lg:px-0' : 'max-w-[800px]'
+                }`
           }
         >
           {runtimeMessagesEmpty ? (
@@ -89,7 +99,7 @@ export function ChatWorkspaceMainPane({
       </div>
 
       <div className="border-t border-gray-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3 backdrop-blur-sm dark:border-gray-800 dark:bg-[#121212]/95 sm:px-4 sm:pt-4">
-        <div className="mx-auto max-w-[800px]">
+        <div className={`mx-auto ${desktop ? 'lg:max-w-[800px]' : 'max-w-[800px]'}`}>
           <ChatComposer
             value={input}
             pending={pending}

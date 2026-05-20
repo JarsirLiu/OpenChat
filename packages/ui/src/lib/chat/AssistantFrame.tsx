@@ -9,11 +9,11 @@ interface AssistantFrameProps {
 
 export function AssistantFrame({ children, footer, meta }: AssistantFrameProps) {
   return (
-    <article className="group flex w-full px-2 py-3 sm:px-4 sm:py-4">
-      <div className="mr-2.5 flex-shrink-0 sm:mr-3">
+    <article className="group flex w-full px-2 py-3 lg:px-0 lg:py-4">
+      <div className="mr-2.5 flex-shrink-0 lg:mr-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
           <img
-            src="https://unpkg.com/@lobehub/assets-logo@1.2.0/assets/logo-3d.webp"
+            src="/openchat-logo-3d.webp"
             alt="OpenChat"
             className="h-6 w-6 object-contain"
             onError={(event) => {
@@ -21,7 +21,7 @@ export function AssistantFrame({ children, footer, meta }: AssistantFrameProps) 
               event.currentTarget.nextElementSibling?.classList.remove('hidden')
             }}
           />
-          <Bot className="h-4 w-4 text-gray-700 dark:text-gray-300 hidden" />
+          <Bot className="hidden h-4 w-4 text-gray-700 dark:text-gray-300" />
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col">

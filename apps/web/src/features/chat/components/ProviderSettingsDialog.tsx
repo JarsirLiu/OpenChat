@@ -59,6 +59,7 @@ export function ProviderSettingsDialog({
   onUnauthorized,
   autoFocusApiKey = false,
 }: ProviderSettingsDialogProps) {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
   const [form, setForm] = useState<ProviderFormState>({
     apiKey: '',
     maskedApiKey: '',
@@ -186,6 +187,15 @@ export function ProviderSettingsDialog({
 
     return () => window.cancelAnimationFrame(frameId)
   }, [autoFocusApiKey, isOpen, loading])
+
+  const handleClose = () => {
+    const activeElement = document.activeElement
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur()
+    }
+    closeButtonRef.current?.blur()
+    onClose()
+  }
 
   const sortedCustomModels = useMemo(
     () =>
@@ -391,7 +401,7 @@ export function ProviderSettingsDialog({
       {isOpen ? (
         <div
           className="fixed inset-0 z-30 bg-black/20 lg:hidden"
-          onClick={onClose}
+          onClick={handleClose}
           aria-hidden="true"
         />
       ) : null}
@@ -403,7 +413,6 @@ export function ProviderSettingsDialog({
             ? 'fixed inset-y-0 right-0 w-full sm:w-[420px] lg:static lg:w-[420px]'
             : 'w-0 border-l-0',
         )}
-        aria-hidden={!isOpen}
       >
         <div
           className={clsx(
@@ -418,8 +427,9 @@ export function ProviderSettingsDialog({
               </div>
             </div>
             <button
+              ref={closeButtonRef}
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
               aria-label="Close settings"
             >
@@ -526,126 +536,133 @@ export function ProviderSettingsDialog({
 
                   <div className="space-y-3">
                     <div className="space-y-3">
-                      <label className="block">
-                        <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
-                          模型名称
-                        </div>
-                        <input
-                          type="text"
-                          value={draft.modelName}
-                          onChange={(event) => updateDraft({ modelName: event.target.value })}
-                          placeholder="如 gpt-4.1-mini 或 gemini-2.5-flash"
-                          className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
-                        />
-                      </label>
-
-                      <label className="block">
-                        <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
-                          Base URL
-                        </div>
-                        <input
-                          type="url"
-                          value={draft.baseUrl}
-                          onChange={(event) => updateDraft({ baseUrl: event.target.value })}
-                          placeholder="请输入 OpenAI 兼容 Base URL"
-                          className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
-                        />
-                      </label>
-
-                      <div className="flex items-end gap-2">
-                        <div className="relative min-w-0 flex-1" ref={modelTypePanelRef}>
+                      <form
+                        className="space-y-3"
+                        onSubmit={(event) => {
+                          event.preventDefault()
+                          void createCustomModel()
+                        }}
+                      >
+                        <label className="block">
                           <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
-                            模型能力
+                            模型名称
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setModelTypeMenuOpen((open) => !open)}
-                            className="flex h-11 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:hover:bg-gray-800"
-                          >
-                            <span>
-                              {CUSTOM_MODEL_TYPE_OPTIONS.find((item) => item.value === draft.modelType)
-                                ?.label ?? '选择能力'}
-                            </span>
-                            <ChevronDown className="h-4 w-4 text-gray-400" />
-                          </button>
-
-                          {modelTypeMenuOpen ? (
-                            <div className="absolute left-0 top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-gray-100 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_10px_40px_rgba(0,0,0,0.4)]">
-                              {CUSTOM_MODEL_TYPE_OPTIONS.map((option) => {
-                                const active = draft.modelType === option.value
-                                return (
-                                  <button
-                                    key={option.value}
-                                    type="button"
-                                    className={clsx(
-                                      'flex w-full items-center justify-between px-4 py-3 text-left transition-colors',
-                                      active
-                                        ? 'bg-gray-50 dark:bg-gray-800'
-                                        : 'hover:bg-gray-50 dark:hover:bg-gray-800',
-                                    )}
-                                    onClick={() => {
-                                      updateDraft({ modelType: option.value })
-                                      setModelTypeMenuOpen(false)
-                                    }}
-                                  >
-                                    <div className="min-w-0">
-                                      <div className="text-[14px] text-gray-900 dark:text-gray-100">
-                                        {option.label}
-                                      </div>
-                                    </div>
-                                    {active ? (
-                                      <Check className="h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
-                                    ) : null}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <label className="min-w-0 flex-1">
-                          <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
-                            API Key
-                          </div>
-                          <div className="relative">
-                            <input
-                              type={customModelApiKeyVisible ? 'text' : 'password'}
-                              value={draft.apiKey}
-                              onChange={(event) => updateDraft({ apiKey: event.target.value })}
-                              placeholder="请输入这个自定义模型专属的 API Key"
-                              className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 pr-11 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setCustomModelApiKeyVisible((visible) => !visible)}
-                              className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-gray-400 transition hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-                              aria-label={
-                                customModelApiKeyVisible ? '隐藏 API Key' : '显示 API Key'
-                              }
-                            >
-                              {customModelApiKeyVisible ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
-                            </button>
-                          </div>
+                          <input
+                            type="text"
+                            value={draft.modelName}
+                            onChange={(event) => updateDraft({ modelName: event.target.value })}
+                            placeholder="如 gpt-4.1-mini 或 gemini-2.5-flash"
+                            className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
+                          />
                         </label>
 
-                        <button
-                          type="button"
-                          onClick={() => void createCustomModel()}
-                          disabled={creating}
-                          className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 text-[13px] font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-200 dark:hover:bg-gray-800"
-                        >
-                          {creating ? (
-                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Plus className="h-3.5 w-3.5" />
-                          )}
-                          <span>添加</span>
-                        </button>
-                      </div>
+                        <label className="block">
+                          <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
+                            Base URL
+                          </div>
+                          <input
+                            type="url"
+                            value={draft.baseUrl}
+                            onChange={(event) => updateDraft({ baseUrl: event.target.value })}
+                            placeholder="请输入 OpenAI 兼容 Base URL"
+                            className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
+                          />
+                        </label>
+
+                        <div className="flex items-end gap-2">
+                          <div className="relative min-w-0 flex-1" ref={modelTypePanelRef}>
+                            <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
+                              模型能力
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setModelTypeMenuOpen((open) => !open)}
+                              className="flex h-11 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:hover:bg-gray-800"
+                            >
+                              <span>
+                                {CUSTOM_MODEL_TYPE_OPTIONS.find((item) => item.value === draft.modelType)
+                                  ?.label ?? '选择能力'}
+                              </span>
+                              <ChevronDown className="h-4 w-4 text-gray-400" />
+                            </button>
+
+                            {modelTypeMenuOpen ? (
+                              <div className="absolute left-0 top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-gray-100 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_10px_40px_rgba(0,0,0,0.4)]">
+                                {CUSTOM_MODEL_TYPE_OPTIONS.map((option) => {
+                                  const active = draft.modelType === option.value
+                                  return (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      className={clsx(
+                                        'flex w-full items-center justify-between px-4 py-3 text-left transition-colors',
+                                        active
+                                          ? 'bg-gray-50 dark:bg-gray-800'
+                                          : 'hover:bg-gray-50 dark:hover:bg-gray-800',
+                                      )}
+                                      onClick={() => {
+                                        updateDraft({ modelType: option.value })
+                                        setModelTypeMenuOpen(false)
+                                      }}
+                                    >
+                                      <div className="min-w-0">
+                                        <div className="text-[14px] text-gray-900 dark:text-gray-100">
+                                          {option.label}
+                                        </div>
+                                      </div>
+                                      {active ? (
+                                        <Check className="h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                                      ) : null}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <label className="min-w-0 flex-1">
+                            <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
+                              API Key
+                            </div>
+                            <div className="relative">
+                              <input
+                                type={customModelApiKeyVisible ? 'text' : 'password'}
+                                value={draft.apiKey}
+                                onChange={(event) => updateDraft({ apiKey: event.target.value })}
+                                placeholder="请输入这个自定义模型专属的 API Key"
+                                className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 pr-11 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setCustomModelApiKeyVisible((visible) => !visible)}
+                                className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-gray-400 transition hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                                aria-label={
+                                  customModelApiKeyVisible ? '隐藏 API Key' : '显示 API Key'
+                                }
+                              >
+                                {customModelApiKeyVisible ? (
+                                  <EyeOff className="h-4 w-4" />
+                                ) : (
+                                  <Eye className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
+                          </label>
+
+                          <button
+                            type="submit"
+                            disabled={creating}
+                            className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 text-[13px] font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-200 dark:hover:bg-gray-800"
+                          >
+                            {creating ? (
+                              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Plus className="h-3.5 w-3.5" />
+                            )}
+                            <span>添加</span>
+                          </button>
+                        </div>
+                      </form>
                     </div>
 
                     <div className="rounded-2xl border border-gray-100 bg-gray-50/70 dark:border-gray-800 dark:bg-[#171717]">

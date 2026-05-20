@@ -101,8 +101,8 @@ export function ChatMessageItem({
     )
 
     return (
-      <article className="flex w-full px-2 py-2 sm:px-4">
-        <div className="ml-auto flex max-w-[82%] flex-col items-end gap-2 sm:max-w-[75%]">
+      <article className="flex w-full px-2 py-2 lg:px-0">
+        <div className="ml-auto flex max-w-[82%] flex-col items-end gap-2 lg:max-w-[75%]">
           {imageParts.length > 0 ? (
             <div className="lc-user-message-images">
               {imageParts.map((part, index) => (
@@ -177,8 +177,8 @@ export function ChatMessageItem({
 
   if (message.role === 'reasoning') {
     return (
-      <article className="flex w-full px-2 py-2 sm:px-4">
-        <div className="mr-2.5 w-8 flex-shrink-0 sm:mr-3" />
+      <article className="flex w-full px-2 py-2 lg:px-0">
+        <div className="mr-2.5 w-8 flex-shrink-0 lg:mr-3" />
         <div className="flex min-w-0 flex-1 flex-col">
           <Reasoning
             reasoning={getReasoningText(message)}
@@ -191,7 +191,7 @@ export function ChatMessageItem({
   }
 
   return (
-    <article className="flex w-full px-2 py-4 sm:px-4">
+    <article className="flex w-full px-2 py-4 lg:px-0">
       <ContentParts message={message} toolState={toolState} />
     </article>
   )

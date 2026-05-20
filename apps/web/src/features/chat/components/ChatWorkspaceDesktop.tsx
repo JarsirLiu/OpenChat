@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { ChatHeader } from './ChatHeader'
 import { ChatSidebar } from './ChatSidebar'
 import { ChatWorkspaceMainPane, type ChatWorkspaceMainPaneProps } from './ChatWorkspaceShared'
@@ -18,6 +19,7 @@ interface ChatWorkspaceDesktopProps {
   onSelectSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
   mainPane: ChatWorkspaceMainPaneProps
+  settingsPanel?: ReactNode
 }
 
 export function ChatWorkspaceDesktop({
@@ -35,6 +37,7 @@ export function ChatWorkspaceDesktop({
   sessionsError,
   sessionsLoading,
   settingsOpen,
+  settingsPanel,
   title,
 }: ChatWorkspaceDesktopProps) {
   return (
@@ -59,8 +62,9 @@ export function ChatWorkspaceDesktop({
           onOpenSettings={onOpenSettings}
           onRename={onOpenRename}
         />
-        <ChatWorkspaceMainPane {...mainPane} />
+        <ChatWorkspaceMainPane {...mainPane} desktop />
       </div>
+      {settingsPanel}
     </div>
   )
 }

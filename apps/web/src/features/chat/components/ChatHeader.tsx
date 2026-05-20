@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Menu, MoreHorizontal, SlidersHorizontal, Pencil, Trash } from 'lucide-react'
+import { Menu, MoreHorizontal, Pencil, Trash, PanelRightOpen, PanelRightClose } from 'lucide-react'
 
 interface ChatHeaderProps {
   title: string
@@ -92,7 +92,11 @@ export function ChatHeader({
             aria-label="Conversation settings"
             onClick={onOpenSettings}
           >
-            <SlidersHorizontal className="h-4 w-4" strokeWidth={1.8} />
+            {settingsOpen ? (
+              <PanelRightClose className="h-4.5 w-4.5" strokeWidth={1.8} />
+            ) : (
+              <PanelRightOpen className="h-4.5 w-4.5" strokeWidth={1.8} />
+            )}
           </button>
         </div>
       </div>

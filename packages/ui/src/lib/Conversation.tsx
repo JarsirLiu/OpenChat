@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ChatRuntimeState } from '@openchat/chat-core'
 import type { ChatMessage, TurnTerminalReasonCode } from '@openchat/protocol'
+import { Bot } from 'lucide-react'
 import { ChatMessageItem } from './chat/ChatMessageItem'
 import { ContentLoading } from './chat/parts/ContentLoading'
 
@@ -37,6 +38,21 @@ const formatConversationErrorMessage = (
 
   return message ?? null
 }
+
+const AssistantAvatar = () => (
+  <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <img
+      src="/openchat-logo-3d.webp"
+      alt="OpenChat"
+      className="h-6 w-6 object-contain"
+      onError={(event) => {
+        event.currentTarget.style.display = 'none'
+        event.currentTarget.nextElementSibling?.classList.remove('hidden')
+      }}
+    />
+    <Bot className="hidden h-4 w-4 text-gray-700 dark:text-gray-300" />
+  </div>
+)
 
 export function Conversation({ state, requestPending = false }: ConversationProps) {
   const lastMessagesLength = useRef(state.messages.length)
@@ -102,18 +118,12 @@ export function Conversation({ state, requestPending = false }: ConversationProp
   const showTimeoutStyle = isTimeoutErrorCode(state.error?.code)
 
   return (
-    <div className="flex w-full flex-col space-y-5 px-2 py-3 sm:space-y-6 sm:p-4">
+    <div className="flex w-full flex-col space-y-5 px-2 py-3 lg:space-y-6 lg:px-0 lg:py-4">
       {items}
       {errorMessage ? (
-        <article className="group flex w-full px-2 sm:px-0">
+        <article className="group flex w-full px-2 lg:px-0">
           <div className="flex-shrink-0 mr-3">
-            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-              <img
-                src="https://unpkg.com/@lobehub/assets-logo@1.2.0/assets/logo-3d.webp"
-                alt="OpenChat"
-                className="h-6 w-6 object-contain"
-              />
-            </div>
+            <AssistantAvatar />
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="mb-1 flex items-center gap-2">
@@ -137,15 +147,9 @@ export function Conversation({ state, requestPending = false }: ConversationProp
         !hasResponse &&
         state.messages.length > 0 &&
         state.messages[state.messages.length - 1].role === 'user' && (
-        <article className="group flex w-full px-2 sm:px-0">
+        <article className="group flex w-full px-2 lg:px-0">
           <div className="flex-shrink-0 mr-3">
-            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-              <img
-                src="https://unpkg.com/@lobehub/assets-logo@1.2.0/assets/logo-3d.webp"
-                alt="OpenChat"
-                className="h-6 w-6 object-contain"
-              />
-            </div>
+            <AssistantAvatar />
           </div>
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
