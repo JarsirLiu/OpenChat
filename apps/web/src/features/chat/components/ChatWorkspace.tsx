@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Conversation } from '@openchat/ui'
 import type { AuthUser } from '../../../lib/auth'
 import { isProviderConfigurationError } from '../../../lib/apiError'
-import { ChatComposer } from './ChatComposer'
-import { ChatHeader } from './ChatHeader'
-import { ChatLanding } from './ChatLanding'
 import { ProviderSettingsDialog } from './ProviderSettingsDialog'
-import { ChatSidebar } from './ChatSidebar'
+import { ChatWorkspaceDesktop } from './ChatWorkspaceDesktop'
+import { ChatWorkspaceMobile } from './ChatWorkspaceMobile'
+import { RenameSessionDialog } from './ChatWorkspaceShared'
 import { useChatWorkspace } from '../useChatWorkspace'
 
 interface ChatWorkspaceProps {
@@ -26,11 +24,13 @@ export function ChatWorkspace({
   onOpenSession,
   onOpenNewSession,
 }: ChatWorkspaceProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [renamePending, setRenamePending] = useState(false)
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 1024 : false,
+  )
   const hasAutoOpenedSettingsRef = useRef(false)
   const {
     catalogErrorCode,
@@ -77,6 +77,19 @@ export function ChatWorkspace({
   })
 
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 1023px)')
+    const update = () => setIsMobile(mediaQuery.matches)
+
+    update()
+    mediaQuery.addEventListener('change', update)
+    return () => mediaQuery.removeEventListener('change', update)
+  }, [])
 
   useEffect(() => {
     if (scrollRef.current && pending) {
@@ -174,120 +187,87 @@ export function ChatWorkspace({
     }
   }
 
-  return (
-    <div className="flex h-screen overflow-hidden bg-white font-sans dark:bg-[#121212]">
-      {sidebarOpen ? (
-        <>
-          <div
-            className="fixed inset-0 z-30 bg-black/30 lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-            aria-hidden="true"
-          />
-          <div className="fixed inset-y-0 left-0 z-40 lg:hidden">
-            <ChatSidebar
-              sessions={sessions}
-              currentSessionId={currentSession?.id ?? ''}
-              loading={sessionsLoading}
-              error={sessionsError}
-              currentUserInitial={(
-                currentUser.username?.slice(0, 1) || currentUser.email.slice(0, 1)
-              ).toUpperCase()}
-              mobile
-              onClose={() => setSidebarOpen(false)}
-              onSelect={(sessionId) => {
-                setSidebarOpen(false)
-                handleSelectSession(sessionId)
-              }}
-              onNewSession={() => {
-                setSidebarOpen(false)
-                startNewSession()
-              }}
-              onDeleteSession={handleDeleteSession}
-              onLogout={onLogout}
-            />
-          </div>
-        </>
-      ) : null}
+  const isEmptyState = runtimeState.messages.length === 0
+  const currentUserInitial = (
+    currentUser.username?.slice(0, 1) || currentUser.email.slice(0, 1)
+  ).toUpperCase()
+  const currentTitle = currentSession?.title?.trim() || '新对话'
+  const mainPane = {
+    catalogLoading,
+    currentUsername: currentUser.username,
+    input,
+    pending,
+    requestPending,
+    runtimeMessagesEmpty: isEmptyState,
+    runtimeState,
+    selectedImageToolAvailable: selectedImageTool?.available ?? true,
+    selectedImageToolKey,
+    selectedImageToolLabel: selectedImageTool?.display_name ?? '不使用图片工具',
+    selectedModelDisplayName: selectedTextModel?.display_name ?? '选择模型',
+    selectedModelProvider: selectedTextModel?.display_provider ?? 'M',
+    selectedModelSupportsImageInputs,
+    selectedProviderInitial: selectedTextModel?.display_name?.slice(0, 1).toUpperCase() ?? 'O',
+    selectedTextModelAvailable: selectedTextModel?.available !== false,
+    selectedTextModelId,
+    imageMenuItems,
+    textMenuItems,
+    attachments,
+    onChangeInput: setInput,
+    onClearImageTool: () => setSelectedImageToolKey(null),
+    onInterrupt: handleInterruptTurn,
+    onLoadOlderHistory: loadOlderHistory,
+    onRemoveAttachment: removeAttachment,
+    onScrollContainerReady: (node: HTMLDivElement | null) => {
+      scrollRef.current = node
+    },
+    onSelectImageTool: setSelectedImageToolKey,
+    onSelectModel: setSelectedTextModelId,
+    onSubmit: handleSubmit,
+    onUploadImages: uploadImages,
+  } as const
+  const currentSessionDeleteHandler = currentSession
+    ? () => handleDeleteSession(currentSession.id)
+    : undefined
 
-      <div className="hidden lg:flex">
-        <ChatSidebar
+  return (
+    <>
+      {isMobile ? (
+        <ChatWorkspaceMobile
           sessions={sessions}
           currentSessionId={currentSession?.id ?? ''}
-          loading={sessionsLoading}
-          error={sessionsError}
-          currentUserInitial={(
-            currentUser.username?.slice(0, 1) || currentUser.email.slice(0, 1)
-          ).toUpperCase()}
-          onSelect={handleSelectSession}
-          onNewSession={startNewSession}
-          onDeleteSession={handleDeleteSession}
-          onLogout={onLogout}
-        />
-      </div>
-
-      <div className="flex min-w-0 flex-1 flex-col bg-white dark:bg-[#121212]">
-        <ChatHeader 
-          title={currentSession?.title?.trim() || '新对话'} 
-          onDelete={() => currentSession && handleDeleteSession(currentSession.id)}
+          currentUserInitial={currentUserInitial}
+          sessionsLoading={sessionsLoading}
+          sessionsError={sessionsError}
+          title={currentTitle}
           settingsOpen={settingsOpen}
-          onOpenSidebar={() => {
-            setSettingsOpen(false)
-            setSidebarOpen(true)
-          }}
+          onDeleteCurrentSession={currentSessionDeleteHandler}
+          onLogout={onLogout}
+          onNewSession={startNewSession}
+          onOpenRename={openRenameDialog}
           onOpenSettings={() => setSettingsOpen(true)}
-          onRename={openRenameDialog}
+          onSelectSession={handleSelectSession}
+          onDeleteSession={handleDeleteSession}
+          mainPane={mainPane}
         />
-
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[800px] py-6">
-            {runtimeState.messages.length === 0 ? (
-              <ChatLanding
-                username={currentUser.username}
-                providerInitial={selectedTextModel?.display_name?.slice(0, 1).toUpperCase() ?? 'O'}
-              />
-            ) : (
-              <Conversation state={runtimeState} requestPending={requestPending} />
-            )}
-          </div>
-        </div>
-
-        <div className="p-4">
-          <div className="mx-auto max-w-[800px]">
-            <ChatComposer
-              value={input}
-              pending={pending}
-              disabled={!selectedTextModel || catalogLoading}
-              imageTools={imageMenuItems}
-              selectedImageToolKey={selectedImageToolKey}
-              selectedImageToolLabel={selectedImageTool?.display_name ?? '不使用图片工具'}
-              selectedImageToolAvailable={selectedImageTool?.available ?? true}
-              models={textMenuItems}
-              selectedModelKey={selectedTextModelId}
-              selectedModelLabel={selectedTextModel?.display_name ?? '选择模型'}
-              selectedModelProvider={selectedTextModel?.display_provider ?? 'M'}
-              modelLoading={catalogLoading}
-              imageToolLoading={catalogLoading}
-              attachments={attachments}
-              placeholder={
-                !selectedTextModel
-                  ? '先选择一个对话模型'
-                  : selectedTextModel.available !== false
-                    ? '提问或继续追问，按 Enter 发送，Shift + Enter 换行'
-                    : '提问或继续追问。若要对话，请先在右侧边栏配置 API Key'
-              }
-              canUploadImages={selectedModelSupportsImageInputs}
-              onChange={setInput}
-              onClearImageTool={() => setSelectedImageToolKey(null)}
-              onRemoveAttachment={removeAttachment}
-              onSelectImageTool={setSelectedImageToolKey}
-              onSelectModel={setSelectedTextModelId}
-              onInterrupt={handleInterruptTurn}
-              onSubmit={handleSubmit}
-              onUploadImages={uploadImages}
-            />
-          </div>
-        </div>
-      </div>
+      ) : (
+        <ChatWorkspaceDesktop
+          sessions={sessions}
+          currentSessionId={currentSession?.id ?? ''}
+          currentUserInitial={currentUserInitial}
+          sessionsLoading={sessionsLoading}
+          sessionsError={sessionsError}
+          title={currentTitle}
+          settingsOpen={settingsOpen}
+          onDeleteCurrentSession={currentSessionDeleteHandler}
+          onLogout={onLogout}
+          onNewSession={startNewSession}
+          onOpenRename={openRenameDialog}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onSelectSession={handleSelectSession}
+          onDeleteSession={handleDeleteSession}
+          mainPane={mainPane}
+        />
+      )}
 
       <ProviderSettingsDialog
         isOpen={settingsOpen}
@@ -297,63 +277,14 @@ export function ChatWorkspace({
         autoFocusApiKey
       />
 
-      {renameDialogOpen ? (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-black/25"
-            onClick={() => !renamePending && setRenameDialogOpen(false)}
-            aria-hidden="true"
-          />
-          <div className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,460px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)] dark:border-gray-800 dark:bg-[#171717]">
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-[16px] font-semibold text-gray-900 dark:text-white">
-                  重命名会话
-                </h3>
-                <p className="mt-1 text-[13px] text-gray-500 dark:text-gray-400">
-                  给这个对话换一个更清晰的名字。
-                </p>
-              </div>
-
-              <input
-                type="text"
-                value={renameValue}
-                onChange={(event) => setRenameValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    void submitRename()
-                  }
-                }}
-                disabled={renamePending}
-                autoFocus
-                maxLength={40}
-                placeholder="输入会话名称"
-                className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
-              />
-
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRenameDialogOpen(false)}
-                  disabled={renamePending}
-                  className="inline-flex h-10 items-center rounded-lg border border-gray-200 bg-white px-4 text-[14px] text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-200 dark:hover:bg-gray-800"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void submitRename()}
-                  disabled={renamePending || !renameValue.trim()}
-                  className="inline-flex h-10 items-center rounded-lg bg-black px-4 text-[14px] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black"
-                >
-                  {renamePending ? '保存中' : '确定'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      ) : null}
-    </div>
+      <RenameSessionDialog
+        isOpen={renameDialogOpen}
+        pending={renamePending}
+        value={renameValue}
+        onChange={setRenameValue}
+        onClose={() => setRenameDialogOpen(false)}
+        onSubmit={() => void submitRename()}
+      />
+    </>
   )
 }

@@ -197,8 +197,8 @@ export function ChatComposer({
     (value.trim().length > 0 || attachments.length > 0)
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto w-full max-w-[800px] px-4">
-      <div className="relative overflow-visible rounded-2xl border border-gray-200 bg-white shadow-[0_4px_24px_rgba(0,0,0,0.07)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
+    <form onSubmit={handleSubmit} className="mx-auto w-full max-w-[800px]">
+      <div className="relative overflow-visible rounded-[24px] border border-gray-200 bg-white shadow-[0_10px_30px_rgba(0,0,0,0.06)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_10px_30px_rgba(0,0,0,0.28)]">
         {attachments.length > 0 ? (
           <div className="flex flex-wrap gap-2 px-4 pb-2 pt-4">
             {attachments.map((attachment) => (
@@ -235,7 +235,7 @@ export function ChatComposer({
           disabled={disabled}
           rows={1}
           placeholder={placeholder}
-          className="min-h-[56px] max-h-[35vh] w-full resize-none bg-transparent px-4 pb-2 pt-4 text-[14px] leading-[1.75] text-gray-800 outline-none placeholder-gray-400 dark:text-gray-100 dark:placeholder-gray-500"
+          className="min-h-[56px] max-h-[35vh] w-full resize-none bg-transparent px-4 pb-2 pt-4 text-[15px] leading-[1.75] text-gray-800 outline-none placeholder-gray-400 dark:text-gray-100 dark:placeholder-gray-500 sm:text-[14px]"
         />
 
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-3 pt-1">
@@ -288,22 +288,22 @@ export function ChatComposer({
                 aria-label="Image tools"
               >
                 <ImagePlus className="h-4 w-4" strokeWidth={2} />
-                <span className="max-w-[132px] truncate">
+                <span className="max-w-[110px] truncate sm:max-w-[132px]">
                   {selectedImageToolKey ? selectedImageToolLabel : '图片工具'}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={2} />
               </button>
 
               {imageToolMenuOpen && (
-                <div className="absolute bottom-full left-0 z-50 mb-2 w-[320px] max-w-[calc(100vw-32px)] overflow-hidden rounded-xl border border-gray-100 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_10px_40px_rgba(0,0,0,0.4)]">
-                  <div className="flex h-[48px] items-center gap-2 border-b border-gray-100 px-4 dark:border-gray-800">
+                <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+84px)] left-3 z-50 w-[min(60vw,236px)] overflow-hidden rounded-[18px] border border-gray-100 bg-white shadow-[0_16px_36px_rgba(0,0,0,0.12)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_16px_36px_rgba(0,0,0,0.34)] sm:absolute sm:bottom-full sm:left-0 sm:mb-2 sm:w-[320px] sm:max-w-[calc(100vw-32px)]">
+                  <div className="flex h-[40px] items-center gap-2 border-b border-gray-100 px-3 dark:border-gray-800 sm:h-[48px] sm:px-4">
                     <Search className="h-4 w-4 flex-shrink-0 text-gray-400" />
                     <input
                       value={imageToolQuery}
                       onChange={(event) => setImageToolQuery(event.target.value)}
                       placeholder="搜索图片工具..."
                       autoFocus
-                      className="flex-1 bg-transparent text-[14px] text-gray-800 outline-none placeholder-gray-400 dark:text-gray-200"
+                      className="flex-1 bg-transparent text-[12px] text-gray-800 outline-none placeholder-gray-400 dark:text-gray-200 sm:text-[14px]"
                     />
                   </div>
 
@@ -316,15 +316,15 @@ export function ChatComposer({
                         setImageToolQuery('')
                       }}
                       className={clsx(
-                        'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800',
+                        'flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800',
                         !selectedImageToolKey && 'bg-gray-50 dark:bg-gray-800',
                       )}
                     >
                       <div className="flex min-w-0 flex-col">
-                        <span className="text-[14px] text-gray-800 dark:text-gray-200">
+                        <span className="text-[12px] font-medium text-gray-800 dark:text-gray-200 sm:text-[14px]">
                           不使用图片工具
                         </span>
-                        <span className="text-[12px] text-gray-400">
+                        <span className="mt-0.5 text-[10px] leading-4 text-gray-400 sm:text-[12px] sm:leading-5">
                           当前只进行普通对话，不触发生图工具
                         </span>
                       </div>
@@ -334,9 +334,9 @@ export function ChatComposer({
                     </button>
                   </div>
 
-                  <div className="max-h-[360px] overflow-y-auto p-2">
+                  <div className="max-h-[min(30vh,220px)] overflow-y-auto p-2 sm:max-h-[360px]">
                     {filteredImageTools.length === 0 && (
-                      <div className="px-4 py-3 text-center text-[13px] text-gray-400">
+                      <div className="px-3 py-5 text-center text-[11px] leading-5 text-gray-400">
                         没有找到匹配的图片工具
                       </div>
                     )}
@@ -350,7 +350,7 @@ export function ChatComposer({
                           disabled={!available}
                           title={!available ? tool.unavailableReason ?? '当前不可用' : undefined}
                           className={clsx(
-                            'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors',
+                            'flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left transition-colors',
                             active
                               ? 'bg-gray-50 dark:bg-gray-800'
                               : 'hover:bg-gray-50 dark:hover:bg-gray-800',
@@ -363,18 +363,18 @@ export function ChatComposer({
                             setImageToolQuery('')
                           }}
                         >
-                          <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex min-w-0 items-center gap-2">
                             <ModelIcon
                               model={tool.iconKey ?? resolveModelIconKey(tool.key, tool.provider, tool.meta)}
-                              size={20}
+                              size={16}
                               type="avatar"
                             />
                             <div className="flex min-w-0 flex-col">
-                              <span className="truncate text-[14px] font-normal text-gray-800 dark:text-gray-200">
+                              <span className="truncate text-[12px] font-medium text-gray-800 dark:text-gray-200 sm:text-[14px] sm:font-normal">
                                 {tool.label}
                               </span>
                               {!available ? (
-                                <span className="truncate text-[12px] text-amber-600 dark:text-amber-300">
+                                <span className="truncate text-[10px] leading-4 text-amber-600 dark:text-amber-300 sm:text-[12px] sm:leading-5">
                                   {tool.unavailableReason ?? '当前账户不可用'}
                                 </span>
                               ) : null}
@@ -418,25 +418,25 @@ export function ChatComposer({
                   size={20}
                   type={'avatar'}
                 />
-                <span className="max-w-[120px] truncate sm:max-w-[160px]">{selectedModelLabel}</span>
+                <span className="max-w-[96px] truncate sm:max-w-[160px]">{selectedModelLabel}</span>
                 <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" strokeWidth={2} />
               </button>
 
               {modelMenuOpen && (
-                <div className="absolute bottom-full right-0 z-50 mb-2 w-[420px] max-w-[calc(100vw-32px)] overflow-hidden rounded-xl border border-gray-100 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_10px_40px_rgba(0,0,0,0.4)]">
-                  <div className="flex h-[48px] items-center gap-2 border-b border-gray-100 px-4 dark:border-gray-800">
+                <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+84px)] right-3 z-50 w-[min(58vw,224px)] overflow-hidden rounded-[18px] border border-gray-100 bg-white shadow-[0_16px_36px_rgba(0,0,0,0.12)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_16px_36px_rgba(0,0,0,0.34)] sm:absolute sm:bottom-full sm:right-0 sm:mb-2 sm:w-[420px] sm:max-w-[calc(100vw-32px)]">
+                  <div className="flex h-[40px] items-center gap-2 border-b border-gray-100 px-3 dark:border-gray-800 sm:h-[48px] sm:px-4">
                     <Search className="h-4 w-4 flex-shrink-0 text-gray-400" />
                     <input
                       value={modelQuery}
                       onChange={(event) => setModelQuery(event.target.value)}
                       placeholder="搜索模型..."
                       autoFocus
-                      className="flex-1 bg-transparent text-[14px] text-gray-800 outline-none placeholder-gray-400 dark:text-gray-200"
+                      className="flex-1 bg-transparent text-[12px] text-gray-800 outline-none placeholder-gray-400 dark:text-gray-200 sm:text-[14px]"
                     />
                   </div>
-                  <div className="max-h-[360px] overflow-y-auto p-2">
+                  <div className="max-h-[min(28vh,208px)] overflow-y-auto p-2 sm:max-h-[360px]">
                     {filteredModels.length === 0 && (
-                      <div className="px-4 py-3 text-center text-[13px] text-gray-400">
+                      <div className="px-3 py-5 text-center text-[11px] leading-5 text-gray-400">
                         没有找到匹配的模型
                       </div>
                     )}
@@ -450,7 +450,7 @@ export function ChatComposer({
                           type="button"
                           disabled={!available}
                           className={clsx(
-                            'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors',
+                            'flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left transition-colors',
                             active
                               ? 'bg-gray-50 dark:bg-gray-800'
                               : 'hover:bg-gray-50 dark:hover:bg-gray-800',
@@ -464,21 +464,21 @@ export function ChatComposer({
                             setModelQuery('')
                           }}
                         >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <ModelIcon model={model.iconKey ?? resolveModelIconKey(model.key, model.provider, model.meta)} size={20} type={'avatar'} />
+                          <div className="flex min-w-0 items-center gap-2">
+                            <ModelIcon model={model.iconKey ?? resolveModelIconKey(model.key, model.provider, model.meta)} size={16} type={'avatar'} />
                             <div className="flex min-w-0 flex-col">
                               <div className="flex min-w-0 items-center gap-2">
-                                <span className="truncate text-[14px] font-normal text-gray-800 dark:text-gray-200">
+                                <span className="truncate text-[12px] font-medium text-gray-800 dark:text-gray-200 sm:text-[14px] sm:font-normal">
                                   {model.label}
                                 </span>
                                 {typeLabel ? (
-                                  <span className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                  <span className="rounded-full border border-gray-200 px-1.5 py-0.5 text-[9px] text-gray-500 dark:border-gray-700 dark:text-gray-400 sm:px-2 sm:text-[11px]">
                                     {typeLabel}
                                   </span>
                                 ) : null}
                               </div>
                               {!available ? (
-                                <span className="truncate text-[12px] text-amber-600 dark:text-amber-300">
+                                <span className="truncate text-[10px] leading-4 text-amber-600 dark:text-amber-300 sm:text-[12px] sm:leading-5">
                                   {model.unavailableReason ?? '当前账户不可用'}
                                 </span>
                               ) : null}

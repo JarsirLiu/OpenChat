@@ -102,10 +102,10 @@ export function Conversation({ state, requestPending = false }: ConversationProp
   const showTimeoutStyle = isTimeoutErrorCode(state.error?.code)
 
   return (
-    <div className="flex flex-col space-y-6 p-4 w-full">
+    <div className="flex w-full flex-col space-y-5 px-2 py-3 sm:space-y-6 sm:p-4">
       {items}
       {errorMessage ? (
-        <article className="group flex w-full">
+        <article className="group flex w-full px-2 sm:px-0">
           <div className="flex-shrink-0 mr-3">
             <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <img
@@ -137,7 +137,7 @@ export function Conversation({ state, requestPending = false }: ConversationProp
         !hasResponse &&
         state.messages.length > 0 &&
         state.messages[state.messages.length - 1].role === 'user' && (
-        <article className="group flex w-full">
+        <article className="group flex w-full px-2 sm:px-0">
           <div className="flex-shrink-0 mr-3">
             <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <img

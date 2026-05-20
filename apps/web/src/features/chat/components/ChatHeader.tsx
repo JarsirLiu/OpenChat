@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Menu, MoreHorizontal, Share2, SlidersHorizontal, Pencil, Trash } from 'lucide-react'
+import { Menu, MoreHorizontal, SlidersHorizontal, Pencil, Trash } from 'lucide-react'
 
 interface ChatHeaderProps {
   title: string
@@ -21,7 +21,7 @@ export function ChatHeader({
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   return (
-    <div className="border-b border-gray-100 bg-white/80 p-4 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/80 sticky top-0 z-10">
+    <div className="sticky top-0 z-10 border-b border-gray-100 bg-white/80 px-3 py-3 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/80 sm:p-4">
       <div className="flex items-center justify-between">
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -32,7 +32,7 @@ export function ChatHeader({
           >
             <Menu className="h-4 w-4" />
           </button>
-          <h1 className="truncate text-base font-semibold text-gray-900 dark:text-white">
+          <h1 className="truncate text-[18px] font-semibold text-gray-900 dark:text-white sm:text-base">
             {title}
           </h1>
           <div className="relative">
@@ -81,14 +81,7 @@ export function ChatHeader({
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-            aria-label="Share conversation"
-          >
-            <Share2 className="h-4 w-4" strokeWidth={1.8} />
-          </button>
+        <div className="flex items-center gap-0.5 sm:gap-1">
           <button
             type="button"
             className={`rounded-lg p-2 transition-colors ${

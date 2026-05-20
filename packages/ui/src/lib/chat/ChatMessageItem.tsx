@@ -101,8 +101,8 @@ export function ChatMessageItem({
     )
 
     return (
-      <article className="flex w-full px-4 py-2">
-        <div className="ml-auto flex max-w-[75%] flex-col items-end gap-2">
+      <article className="flex w-full px-2 py-2 sm:px-4">
+        <div className="ml-auto flex max-w-[82%] flex-col items-end gap-2 sm:max-w-[75%]">
           {imageParts.length > 0 ? (
             <div className="lc-user-message-images">
               {imageParts.map((part, index) => (
@@ -115,7 +115,7 @@ export function ChatMessageItem({
             </div>
           ) : null}
 
-          <div className="lc-user-message-bubble px-4 py-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-[14px] leading-relaxed shadow-sm">
+          <div className="lc-user-message-bubble rounded-2xl bg-gray-100 px-4 py-2.5 text-[14px] leading-relaxed text-gray-900 shadow-sm dark:bg-gray-800 dark:text-gray-100">
             <div className="lc-message-content">
               {textParts.map((part, index) => (
                 <Text
@@ -177,9 +177,9 @@ export function ChatMessageItem({
 
   if (message.role === 'reasoning') {
     return (
-      <article className="flex w-full px-4 py-2">
-        <div className="flex-shrink-0 mr-3 w-8" />
-        <div className="flex flex-col flex-1 min-w-0">
+      <article className="flex w-full px-2 py-2 sm:px-4">
+        <div className="mr-2.5 w-8 flex-shrink-0 sm:mr-3" />
+        <div className="flex min-w-0 flex-1 flex-col">
           <Reasoning
             reasoning={getReasoningText(message)}
             isActive={isReasoningActive}
@@ -191,7 +191,7 @@ export function ChatMessageItem({
   }
 
   return (
-    <article className="flex w-full px-4 py-4">
+    <article className="flex w-full px-2 py-4 sm:px-4">
       <ContentParts message={message} toolState={toolState} />
     </article>
   )
