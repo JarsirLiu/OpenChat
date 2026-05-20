@@ -4,12 +4,11 @@ use futures_util::StreamExt;
 use openchat_infra::stores::ChatStore;
 
 use crate::{
-    execution::{
+    runtime::execution::{
         event_builder::{build_session, build_session_updated_event, send_event},
         helpers::now_string,
     },
-    model_provider_runtime::ModelProviderRuntime,
-    ModelStreamEvent, SessionRuntime, TextModelAccessResolver, TurnPlan,
+    ModelProviderRuntime, ModelStreamEvent, SessionRuntime, TextModelAccessResolver, TurnPlan,
 };
 
 const MAX_GENERATED_TITLE_CHARS: usize = 10;

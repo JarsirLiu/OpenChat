@@ -2,7 +2,7 @@ use openchat_infra::stores::ChatStore;
 use openchat_infra::stores::PersistedTurnTerminalReason;
 
 use crate::{
-    execution::{
+    runtime::execution::{
         event_builder::{
             build_session, build_session_updated_event, build_turn, build_turn_completed_event,
             build_turn_failed_event, send_event,

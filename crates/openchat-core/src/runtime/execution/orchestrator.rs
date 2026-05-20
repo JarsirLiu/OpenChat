@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use tokio::time::{timeout, Duration};
 
 use crate::{
-    execution::{
+    runtime::execution::{
         event_builder::{
             build_image_generated_event, build_message_delta_event, build_message_item,
             build_message_started_event, build_reasoning_completed_event,
@@ -19,12 +19,11 @@ use crate::{
         lifecycle::{emit_session_updated, finalize_turn, TurnTerminalState},
         session_title::SessionTitleGenerator,
     },
-    model_provider_runtime::ModelProviderRuntime,
-    model_runtime::ModelStreamEvent,
     ActiveTurnHandle, ImageModelAccessResolver, MediaAsset, ModelEventStream, OutboundContentPart,
-    OutboundMessage, OutboundToolCall, SessionRuntime, TextModelAccessResolver, ToolAccessResolver,
-    ToolExecutionResult, ToolExecutor, ToolInvocation, TurnExecution, TurnExecutionFuture,
-    TurnPlan, TurnRunner, TurnTerminalReason,
+    ModelProviderRuntime, ModelStreamEvent, OutboundMessage, OutboundToolCall, SessionRuntime,
+    TextModelAccessResolver, ToolAccessResolver, ToolExecutionResult, ToolExecutor,
+    ToolInvocation, TurnExecution, TurnExecutionFuture, TurnPlan, TurnRunner,
+    TurnTerminalReason,
 };
 
 const MAX_MODEL_STEPS_PER_TURN: usize = 8;

@@ -1,6 +1,6 @@
 use std::{future::Future, pin::Pin};
 
-use crate::{turn_control::ActiveTurnHandle, SessionRuntime, TurnPlan};
+use crate::{ActiveTurnHandle, SessionRuntime, TurnPlan};
 
 pub type TurnExecutionFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 

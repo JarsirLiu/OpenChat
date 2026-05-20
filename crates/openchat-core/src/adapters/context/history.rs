@@ -39,7 +39,7 @@ fn trim_history_window(history: Vec<OutboundMessage>) -> Vec<OutboundMessage> {
 #[cfg(test)]
 mod tests {
     use super::build_session_context;
-    use crate::context::OutboundMessage;
+    use crate::OutboundMessage;
 
     fn message(turn_index: usize, role: &str, item_index: usize) -> OutboundMessage {
         OutboundMessage {

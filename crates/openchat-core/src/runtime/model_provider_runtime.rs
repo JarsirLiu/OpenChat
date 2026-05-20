@@ -1,9 +1,8 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use crate::{
-    model_runtime::{ModelEventStream, ModelRuntime},
-    tools::{GeneratedImage, ImageRuntime},
-    ChatServiceError, TurnModelRef, TurnPlan, TurnToolRef,
+    runtime::tools::ImageGenerationRequest, ChatServiceError, GeneratedImage, ImageRuntime,
+    ModelEventStream, ModelRuntime, TurnModelRef, TurnPlan, TurnToolRef,
 };
 
 pub type ResolveTextAccessFuture<'a> =
@@ -123,7 +122,7 @@ where
         &self,
         user_id: &str,
         tool: &TurnToolRef,
-        request: &crate::tools::ImageGenerationRequest,
+        request: &ImageGenerationRequest,
     ) -> Result<Vec<GeneratedImage>, ChatServiceError> {
         let access = self
             .access_resolver
