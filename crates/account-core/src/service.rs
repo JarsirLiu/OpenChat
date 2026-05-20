@@ -10,6 +10,7 @@ use openchat_core::{
 use crate::{
     AuthError, AuthService, AuthSession, AuthUser, CreateUserCustomModel, CustomModelService,
     ModelProviderService, UpsertUserProviderApiKey, UserCustomModel, UserProviderApiKey,
+    UserProviderApiKeySecret,
 };
 
 #[derive(Clone)]
@@ -73,6 +74,16 @@ impl AccountService {
     ) -> Result<UserProviderApiKey, ChatServiceError> {
         self.model_provider_service
             .upsert_user_api_key(user_id, update)
+            .await
+    }
+
+    pub async fn get_user_provider_api_key(
+        &self,
+        user_id: &str,
+        provider_key: &str,
+    ) -> Result<UserProviderApiKeySecret, ChatServiceError> {
+        self.model_provider_service
+            .get_user_api_key(user_id, provider_key)
             .await
     }
 

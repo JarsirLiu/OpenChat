@@ -1,8 +1,9 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{extract::{Path, State}, http::StatusCode, response::IntoResponse, Json};
 use axum_extra::extract::cookie::CookieJar;
 use openchat_account_core::{
     AuthError, AuthUser, CreateUserCustomModelDto, LoginRequestDto, RegisterRequestDto,
     UpsertUserProviderApiKeyDto, UserCustomModelDto, UserInfoDto, UserProviderApiKeyDto,
+    UserProviderApiKeySecretDto,
 };
 
 use crate::{
@@ -149,6 +150,21 @@ pub async fn upsert_user_provider_api_key(
         .await
     {
         Ok(setting) => Json(UserProviderApiKeyDto::from(setting)).into_response(),
+        Err(error) => chat_service_error_response_from_error(error),
+    }
+}
+
+pub async fn get_user_provider_api_key(
+    State(state): State<AppState>,
+    CurrentUser(auth): CurrentUser,
+    Path(provider_key): Path<String>,
+) -> impl IntoResponse {
+    match state
+        .account_service
+        .get_user_provider_api_key(auth.user_id(), provider_key.as_str())
+        .await
+    {
+        Ok(setting) => Json(UserProviderApiKeySecretDto::from(setting)).into_response(),
         Err(error) => chat_service_error_response_from_error(error),
     }
 }

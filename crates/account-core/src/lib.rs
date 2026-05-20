@@ -10,12 +10,12 @@ pub use auth_service::{AuthService, ACCESS_TOKEN_TTL_MILLIS, REFRESH_TOKEN_TTL_M
 pub use contracts::{
     AuthResponseDto, CreateUserCustomModelDto, LoginRequestDto, LogoutRequestDto,
     RefreshRequestDto, RegisterRequestDto, UpsertUserProviderApiKeyDto, UserCustomModelDto,
-    UserDto, UserInfoDto, UserProviderApiKeyDto,
+    UserDto, UserInfoDto, UserProviderApiKeyDto, UserProviderApiKeySecretDto,
 };
 pub use custom_model_service::CustomModelService;
 pub use domain::{
     AuthError, AuthSession, AuthUser, CreateUserCustomModel, UpsertUserProviderApiKey,
-    UserCustomModel, UserProviderApiKey,
+    UserCustomModel, UserProviderApiKey, UserProviderApiKeySecret,
 };
 pub use model_provider_service::ModelProviderService;
 pub use service::AccountService;

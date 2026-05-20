@@ -8,7 +8,9 @@ use openchat_infra::stores::{
     PersistedUserProviderApiKey, UpdateUserProviderApiKey, UserProviderApiKeyStore,
 };
 
-use crate::{SystemProviderRegistry, UpsertUserProviderApiKey, UserProviderApiKey};
+use crate::{
+    SystemProviderRegistry, UpsertUserProviderApiKey, UserProviderApiKey, UserProviderApiKeySecret,
+};
 
 #[derive(Clone)]
 pub struct ModelProviderService {
@@ -58,6 +60,27 @@ impl ModelProviderService {
             .await
             .map(Self::build_user_api_key)
             .map_err(internal_error)
+    }
+
+    pub async fn get_user_api_key(
+        &self,
+        user_id: &str,
+        provider_key: &str,
+    ) -> Result<UserProviderApiKeySecret, ChatServiceError> {
+        validate_provider_key(provider_key)?;
+        let Some(stored) = self
+            .user_provider_api_key_store
+            .find_user_api_key(user_id, provider_key)
+            .await
+            .map_err(internal_error)?
+        else {
+            return Err(ChatServiceError::new(404, "Provider API key not found"));
+        };
+
+        Ok(UserProviderApiKeySecret {
+            provider_key: stored.provider_key,
+            api_key: stored.api_key,
+        })
     }
 
     pub async fn resolve_text_access(
@@ -182,9 +205,11 @@ impl ModelProviderService {
     }
 
     fn build_user_api_key(stored: PersistedUserProviderApiKey) -> UserProviderApiKey {
+        let has_api_key = !stored.api_key.trim().is_empty();
         UserProviderApiKey {
             provider_key: stored.provider_key,
-            has_api_key: !stored.api_key.trim().is_empty(),
+            has_api_key,
+            masked_api_key: has_api_key.then(|| mask_api_key(stored.api_key.as_str())),
             created_at: stored.created_at,
             updated_at: stored.updated_at,
         }
@@ -205,4 +230,23 @@ fn validate_provider_key(provider_key: &str) -> Result<(), ChatServiceError> {
 
 fn internal_error(error: anyhow::Error) -> ChatServiceError {
     ChatServiceError::new(500, error.to_string())
+}
+
+fn mask_api_key(api_key: &str) -> String {
+    let trimmed = api_key.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let chars = trimmed.chars().collect::<Vec<_>>();
+    if chars.len() <= 8 {
+        return "*".repeat(chars.len());
+    }
+
+    let prefix = chars.iter().take(4).collect::<String>();
+    let suffix = chars
+        .iter()
+        .skip(chars.len().saturating_sub(4))
+        .collect::<String>();
+    format!("{prefix}****{suffix}")
 }

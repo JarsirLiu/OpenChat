@@ -25,6 +25,10 @@ pub fn build_router(state: AppState, config: &AppConfig) -> Router {
                 .put(handlers::auth::upsert_user_provider_api_key),
         )
         .route(
+            "/api/user-provider-api-keys/:provider_key",
+            get(handlers::auth::get_user_provider_api_key),
+        )
+        .route(
             "/api/custom-models",
             get(handlers::auth::list_user_custom_models)
                 .post(handlers::auth::create_user_custom_model),

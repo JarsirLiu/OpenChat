@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AuthSession, AuthUser, CreateUserCustomModel, UpsertUserProviderApiKey, UserCustomModel,
-    UserProviderApiKey,
+    UserProviderApiKey, UserProviderApiKeySecret,
 };
 
 #[derive(Deserialize)]
@@ -53,8 +53,15 @@ pub struct AuthResponseDto {
 pub struct UserProviderApiKeyDto {
     pub provider_key: String,
     pub has_api_key: bool,
+    pub masked_api_key: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Serialize)]
+pub struct UserProviderApiKeySecretDto {
+    pub provider_key: String,
+    pub api_key: String,
 }
 
 #[derive(Deserialize)]
@@ -118,8 +125,18 @@ impl From<UserProviderApiKey> for UserProviderApiKeyDto {
         Self {
             provider_key: value.provider_key,
             has_api_key: value.has_api_key,
+            masked_api_key: value.masked_api_key,
             created_at: value.created_at,
             updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<UserProviderApiKeySecret> for UserProviderApiKeySecretDto {
+    fn from(value: UserProviderApiKeySecret) -> Self {
+        Self {
+            provider_key: value.provider_key,
+            api_key: value.api_key,
         }
     }
 }

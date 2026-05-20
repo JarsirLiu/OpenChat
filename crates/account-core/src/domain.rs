@@ -55,8 +55,15 @@ impl AuthError {
 pub struct UserProviderApiKey {
     pub provider_key: String,
     pub has_api_key: bool,
+    pub masked_api_key: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Clone)]
+pub struct UserProviderApiKeySecret {
+    pub provider_key: String,
+    pub api_key: String,
 }
 
 #[derive(Clone)]

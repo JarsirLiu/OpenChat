@@ -14,7 +14,7 @@ import {
 import clsx from 'clsx'
 import { AuthError, authenticatedFetch } from '../../../lib/auth'
 import { createApiError, ensureOk, toApiError } from '../../../lib/apiError'
-import type { UserCustomModel, UserProviderApiKey } from '../types'
+import type { UserCustomModel, UserProviderApiKey, UserProviderApiKeySecret } from '../types'
 
 interface ProviderSettingsDialogProps {
   isOpen: boolean
@@ -25,6 +25,7 @@ interface ProviderSettingsDialogProps {
 
 type ProviderFormState = {
   apiKey: string
+  maskedApiKey: string
   hasStoredApiKey: boolean
 }
 
@@ -58,6 +59,7 @@ export function ProviderSettingsDialog({
 }: ProviderSettingsDialogProps) {
   const [form, setForm] = useState<ProviderFormState>({
     apiKey: '',
+    maskedApiKey: '',
     hasStoredApiKey: false,
   })
   const [draft, setDraft] = useState<ModelDraftState>({
@@ -69,6 +71,7 @@ export function ProviderSettingsDialog({
   const [customModels, setCustomModels] = useState<UserCustomModel[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [revealingProviderApiKey, setRevealingProviderApiKey] = useState(false)
   const [creating, setCreating] = useState(false)
   const [deletingModelId, setDeletingModelId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
@@ -115,6 +118,7 @@ export function ProviderSettingsDialog({
 
         setForm({
           apiKey: '',
+          maskedApiKey: currentSetting?.masked_api_key?.trim() ?? '',
           hasStoredApiKey: currentSetting?.has_api_key ?? false,
         })
         setCustomModels(customPayload)
@@ -185,6 +189,61 @@ export function ProviderSettingsDialog({
     setFeedback(null)
   }
 
+  const revealProviderApiKey = async () => {
+    if (providerApiKeyVisible) {
+      setProviderApiKeyVisible(false)
+      return
+    }
+
+    if (form.apiKey.trim()) {
+      setProviderApiKeyVisible(true)
+      return
+    }
+
+    if (!form.hasStoredApiKey) {
+      setProviderApiKeyVisible(true)
+      return
+    }
+
+    setRevealingProviderApiKey(true)
+    setFeedback(null)
+
+    try {
+      const response = await ensureOk(
+        await authenticatedFetch(
+          `/api/user-provider-api-keys/${encodeURIComponent(DEFAULT_PROVIDER_KEY)}`,
+        ),
+        'Failed to load API key',
+      )
+
+      const payload = (await response.json()) as UserProviderApiKeySecret
+      setForm((current) => ({
+        ...current,
+        apiKey: payload.api_key,
+      }))
+      setProviderApiKeyVisible(true)
+    } catch (error) {
+      if (error instanceof AuthError && error.status === 401) {
+        onUnauthorized()
+        return
+      }
+      setFeedback({
+        type: 'error',
+        message: toApiError(error, 'Failed to load API key').message,
+      })
+    } finally {
+      setRevealingProviderApiKey(false)
+    }
+  }
+
+  const providerApiKeyDisplayValue = form.apiKey || form.maskedApiKey
+  const providerApiKeyInputType =
+    !form.apiKey && form.maskedApiKey && !providerApiKeyVisible
+      ? 'text'
+      : providerApiKeyVisible
+        ? 'text'
+        : 'password'
+
   const saveProvider = async () => {
     setSaving(true)
     setFeedback(null)
@@ -202,8 +261,10 @@ export function ProviderSettingsDialog({
       setForm((current) => ({
         ...current,
         apiKey: current.apiKey.trim(),
+        maskedApiKey: payload.masked_api_key?.trim() ?? current.maskedApiKey,
         hasStoredApiKey: payload.has_api_key,
       }))
+      setProviderApiKeyVisible(false)
       setFeedback({
         type: 'success',
         message: 'API Key 已保存',
@@ -396,19 +457,27 @@ export function ProviderSettingsDialog({
                       ) : null}
                       <div className="relative">
                         <input
-                          type={providerApiKeyVisible ? 'text' : 'password'}
-                          value={form.apiKey}
-                          onChange={(event) => updateForm({ apiKey: event.target.value })}
+                          type={providerApiKeyInputType}
+                          value={providerApiKeyDisplayValue}
+                          onChange={(event) =>
+                            updateForm({
+                              apiKey: event.target.value,
+                              maskedApiKey: '',
+                            })
+                          }
                           placeholder="请输入你购买的 API Key"
                           className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 pr-11 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
                         />
                         <button
                           type="button"
-                          onClick={() => setProviderApiKeyVisible((visible) => !visible)}
+                          onClick={() => void revealProviderApiKey()}
+                          disabled={revealingProviderApiKey}
                           className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-gray-400 transition hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                           aria-label={providerApiKeyVisible ? '隐藏 API Key' : '显示 API Key'}
                         >
-                          {providerApiKeyVisible ? (
+                          {revealingProviderApiKey ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                          ) : providerApiKeyVisible ? (
                             <EyeOff className="h-4 w-4" />
                           ) : (
                             <Eye className="h-4 w-4" />

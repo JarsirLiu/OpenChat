@@ -30,8 +30,14 @@ export interface CatalogTool {
 export interface UserProviderApiKey {
   provider_key: string
   has_api_key: boolean
+  masked_api_key?: string | null
   created_at: string
   updated_at: string
+}
+
+export interface UserProviderApiKeySecret {
+  provider_key: string
+  api_key: string
 }
 
 export interface UserCustomModel {
