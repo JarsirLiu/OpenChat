@@ -11,9 +11,7 @@ import { buildChatRequest } from './request'
 import {
   createSessionId,
   ensureSessionPreference,
-  readStoredSessionId,
   updateSessionPreference,
-  writeStoredSessionId,
 } from './sessionPreferences'
 import { useChatStream } from './useChatStream'
 import {
@@ -58,12 +56,21 @@ const runtimeReducer = (
 interface UseChatWorkspaceParams {
   currentUser: AuthUser
   onUnauthorized: () => void
+  activeSessionId: string | null
+  onOpenSession: (sessionId: string) => void
+  onOpenNewSession: () => void
 }
 
-export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspaceParams) {
-  const [sessionId, setSessionId] = useState(
-    () => readStoredSessionId(currentUser.id) ?? createSessionId(),
-  )
+const DRAFT_SESSION_ID = '__draft__'
+
+export function useChatWorkspace({
+  currentUser,
+  onUnauthorized,
+  activeSessionId,
+  onOpenSession,
+  onOpenNewSession,
+}: UseChatWorkspaceParams) {
+  const sessionId = activeSessionId ?? DRAFT_SESSION_ID
   const [runtimeState, dispatch] = useReducer(
     runtimeReducer,
     undefined,
@@ -76,17 +83,12 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
 
   useEffect(() => {
     ensureSessionPreference(currentUser.id, sessionId)
-    writeStoredSessionId(currentUser.id, sessionId)
     dispatch({ type: 'reset' })
     setInput('')
     setAttachments([])
     setRequestError(null)
     setRequestPending(false)
   }, [currentUser.id, sessionId])
-
-  useEffect(() => {
-    setSessionId(readStoredSessionId(currentUser.id) ?? createSessionId())
-  }, [currentUser.id])
 
   useEffect(() => {
     if (!requestError) {
@@ -131,8 +133,11 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
   } = useSessions(currentUser.id, onUnauthorized)
 
   const currentSession = useMemo(
-    () => sessions.find((session) => session.id === sessionId) ?? null,
-    [sessionId, sessions],
+    () =>
+      activeSessionId
+        ? sessions.find((session) => session.id === activeSessionId) ?? null
+        : null,
+    [activeSessionId, sessions],
   )
 
   const handleHydrate = useCallback((messages: ChatMessage[]) => {
@@ -167,7 +172,7 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
 
   const { historyHasMore, historyLoading, loadOlderHistory } = useChatStream({
     sessionId,
-    enabled: Boolean(currentSession),
+    enabled: Boolean(activeSessionId && currentSession),
     onHydrate: handleHydrate,
     onPrependHydrate: handlePrependHydrate,
     onHydrateSession: handleHydrateSession,
@@ -190,10 +195,8 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
     }) ?? false
 
   const createAndSelectSession = useCallback(() => {
-    const nextSessionId = createSessionId()
-    ensureSessionPreference(currentUser.id, nextSessionId)
-    setSessionId(nextSessionId)
-  }, [currentUser.id])
+    onOpenNewSession()
+  }, [onOpenNewSession])
 
   const runChatTurn = useCallback(
     async (prompt: string) => {
@@ -214,13 +217,15 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
       }
       setRequestError(null)
       setRequestPending(true)
+      const targetSessionId = activeSessionId ?? createSessionId()
+      ensureSessionPreference(currentUser.id, targetSessionId)
 
       try {
         const response = await authenticatedFetch('/api/chat', {
           method: 'POST',
           body: JSON.stringify(
             buildChatRequest(
-              sessionId,
+              targetSessionId,
               prompt,
               selectedTextModel,
               selectedImageTool,
@@ -239,21 +244,35 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
           throw new Error('OpenChat server did not accept the chat request')
         }
 
+        const acceptedSessionId =
+          typeof payload.session_id === 'string' && payload.session_id.trim()
+            ? payload.session_id
+            : targetSessionId
+
         upsertSession({
-          id:
-            typeof payload.session_id === 'string' && payload.session_id.trim()
-              ? payload.session_id
-              : sessionId,
+          id: acceptedSessionId,
           title: null,
           status: 'running',
           createdAt: Date.now().toString(),
           updatedAt: Date.now().toString(),
         })
+
+        if (!activeSessionId) {
+          onOpenSession(acceptedSessionId)
+        }
       } finally {
         setRequestPending(false)
       }
     },
-    [attachments, selectedImageTool, selectedTextModel, sessionId, upsertSession],
+    [
+      activeSessionId,
+      attachments,
+      currentUser.id,
+      onOpenSession,
+      selectedImageTool,
+      selectedTextModel,
+      upsertSession,
+    ],
   )
 
   const handleSubmit = useCallback(async () => {
@@ -328,12 +347,12 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
   )
 
   const handleSelectSession = useCallback((nextSessionId: string) => {
-    if (!nextSessionId || nextSessionId === sessionId) {
+    if (!nextSessionId || nextSessionId === activeSessionId) {
       return
     }
     ensureSessionPreference(currentUser.id, nextSessionId)
-    setSessionId(nextSessionId)
-  }, [currentUser.id, sessionId])
+    onOpenSession(nextSessionId)
+  }, [activeSessionId, currentUser.id, onOpenSession])
 
   const handleDeleteSession = useCallback(
     async (targetSessionId: string) => {
@@ -341,14 +360,14 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
         setRequestError(null)
         await deleteSession(targetSessionId)
 
-        if (targetSessionId === sessionId) {
+        if (targetSessionId === activeSessionId) {
           createAndSelectSession()
         }
       } catch (error) {
         setRequestError(error instanceof Error ? error.message : 'Failed to delete session')
       }
     },
-    [createAndSelectSession, deleteSession, sessionId],
+    [activeSessionId, createAndSelectSession, deleteSession],
   )
 
   const handleRenameSession = useCallback(
@@ -370,14 +389,14 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
   )
 
   const handleInterruptTurn = useCallback(async () => {
-    if (!runtimeState.isStreaming || !runtimeState.activeTurnId) {
+    if (!activeSessionId || !runtimeState.isStreaming || !runtimeState.activeTurnId) {
       return
     }
 
     try {
       setRequestError(null)
       const response = await authenticatedFetch(
-        `/api/sessions/${sessionId}/turns/${runtimeState.activeTurnId}/interrupt`,
+        `/api/sessions/${activeSessionId}/turns/${runtimeState.activeTurnId}/interrupt`,
         {
           method: 'POST',
         },
@@ -390,7 +409,7 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
     } catch (error) {
       setRequestError(error instanceof Error ? error.message : 'Failed to stop generation')
     }
-  }, [runtimeState.activeTurnId, runtimeState.isStreaming, sessionId])
+  }, [activeSessionId, runtimeState.activeTurnId, runtimeState.isStreaming])
 
   return {
     catalogError,

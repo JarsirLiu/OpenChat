@@ -2,7 +2,12 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { LoginView } from './features/auth/components/LoginView'
 import { RequireAuth, RequireGuest } from './features/auth/components/AuthRouteGuards'
 import { useAuthSession } from './features/auth/useAuthSession'
-import { ChatWorkspace } from './features/chat/components/ChatWorkspace'
+import {
+  CHAT_HOME_PATH,
+  CHAT_INDEX_PATH,
+  CHAT_SESSION_PATH,
+} from './features/chat/chatNavigation'
+import { ChatWorkspaceRoute } from './features/chat/components/ChatWorkspaceRoute'
 
 export function App() {
   const {
@@ -55,10 +60,34 @@ export function App() {
         }
       />
       <Route
-        path="/"
+        path={CHAT_HOME_PATH}
         element={
           <RequireAuth currentUser={currentUser}>
-            <ChatWorkspace
+            <ChatWorkspaceRoute
+              currentUser={currentUser!}
+              onLogout={handleLogout}
+              onUnauthorized={handleUnauthorized}
+            />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path={CHAT_INDEX_PATH}
+        element={
+          <RequireAuth currentUser={currentUser}>
+            <ChatWorkspaceRoute
+              currentUser={currentUser!}
+              onLogout={handleLogout}
+              onUnauthorized={handleUnauthorized}
+            />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path={CHAT_SESSION_PATH}
+        element={
+          <RequireAuth currentUser={currentUser}>
+            <ChatWorkspaceRoute
               currentUser={currentUser!}
               onLogout={handleLogout}
               onUnauthorized={handleUnauthorized}

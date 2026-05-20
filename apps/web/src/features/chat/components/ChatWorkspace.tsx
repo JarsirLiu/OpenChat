@@ -12,6 +12,9 @@ interface ChatWorkspaceProps {
   currentUser: AuthUser
   onLogout: () => Promise<void>
   onUnauthorized: () => void
+  activeSessionId: string | null
+  onOpenSession: (sessionId: string) => void
+  onOpenNewSession: () => void
 }
 
 const shouldPromptProviderSettings = (message: string | null) => {
@@ -32,6 +35,9 @@ export function ChatWorkspace({
   currentUser,
   onLogout,
   onUnauthorized,
+  activeSessionId,
+  onOpenSession,
+  onOpenNewSession,
 }: ChatWorkspaceProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
@@ -76,6 +82,9 @@ export function ChatWorkspace({
   } = useChatWorkspace({
     currentUser,
     onUnauthorized,
+    activeSessionId,
+    onOpenSession,
+    onOpenNewSession,
   })
 
   const scrollRef = useRef<HTMLDivElement>(null)

@@ -29,8 +29,8 @@ use crate::{
 };
 
 const MAX_MODEL_STEPS_PER_TURN: usize = 8;
-const MODEL_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-const MODEL_STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(45);
+const MODEL_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const MODEL_STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(15);
 
 fn now_millis() -> u128 {
     use std::time::{SystemTime, UNIX_EPOCH};

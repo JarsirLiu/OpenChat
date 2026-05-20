@@ -226,7 +226,12 @@ mod tests {
 
     #[test]
     fn rejects_predefined_model_names_for_custom_models() {
-        let reserved = HashSet::from_iter(["gpt-5.4".to_string(), "openchat:gpt-5.4".to_string()]);
+        let reserved = HashSet::from_iter([
+            "gpt-5.4".to_string(),
+            "openchat:gpt-5.4".to_string(),
+            "gpt-5.4-mini".to_string(),
+            "openchat:gpt-5.4-mini".to_string(),
+        ]);
         let error = validate_custom_model(
             "gpt-5.4",
             "text",
