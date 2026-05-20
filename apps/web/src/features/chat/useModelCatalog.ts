@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AuthError, authenticatedFetch } from '../../lib/auth'
+import { ApiError, createApiError, toApiError } from '../../lib/apiError'
 import { resolveModelIconKey } from './modelIcon'
 import { imageToolKeyOf, readSessionPreferences } from './sessionPreferences'
 import type { CatalogModel, CatalogTool, ModelMenuItem } from './types'
@@ -29,7 +30,7 @@ export function useModelCatalog({
   onUnauthorized,
 }: UseModelCatalogParams) {
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<ApiError | null>(null)
   const [textModels, setTextModels] = useState<CatalogModel[]>([])
   const [imageTools, setImageTools] = useState<CatalogTool[]>([])
   const [selectedTextModelId, setSelectedTextModelId] = useState<string | null>(
@@ -62,7 +63,10 @@ export function useModelCatalog({
       ])
 
       if (!modelsResponse.ok || !toolsResponse.ok) {
-        throw new Error('Failed to load OpenChat model catalog')
+        throw (await createApiError(
+          !modelsResponse.ok ? modelsResponse : toolsResponse,
+          'Failed to load OpenChat model catalog',
+        ))
       }
 
       const [modelsPayload, toolsPayload] = (await Promise.all([
@@ -121,7 +125,7 @@ export function useModelCatalog({
       if (error instanceof AuthError && error.status === 401) {
         onUnauthorized()
       }
-      setError(error instanceof Error ? error.message : 'Failed to load OpenChat model catalog')
+      setError(toApiError(error, 'Failed to load OpenChat model catalog'))
     } finally {
       setLoading(false)
     }
@@ -182,7 +186,8 @@ export function useModelCatalog({
   )
   return {
     loading,
-    error,
+    error: error?.message ?? null,
+    errorCode: error?.code ?? null,
     textModels,
     imageTools,
     selectedTextModelId,

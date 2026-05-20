@@ -12,7 +12,10 @@ use openchat_core::events::ChatEventEnvelope;
 use crate::{
     http::{
         chat::{ChatAcceptedResponseDto, ChatRequestDto, SelectedTextModelDto, SelectedToolDto},
-        errors::ErrorResponseDto,
+        errors::{
+            chat_service_error_response, error_response, ErrorResponseDto,
+            ATTACHMENT_ACCESS_DENIED, AUTHORIZATION_DENIED, SESSION_NOT_FOUND, VALIDATION_ERROR,
+        },
     },
     security::extractors::CurrentUser,
     state::AppState,
@@ -48,9 +51,7 @@ async fn validate_text_model_selection(
         )
         .await
         .map(|_| ())
-        .map_err(|error| ErrorResponseDto {
-            message: error.message,
-        })
+        .map_err(|error| ErrorResponseDto::from_code(VALIDATION_ERROR, error.message))
 }
 
 async fn validate_tool_selection(
@@ -81,9 +82,7 @@ async fn validate_tool_selection(
         )
         .await
         .map(|_| ())
-        .map_err(|error| ErrorResponseDto {
-            message: error.message,
-        })
+        .map_err(|error| ErrorResponseDto::from_code(VALIDATION_ERROR, error.message))
 }
 
 async fn normalize_attachments(
@@ -100,19 +99,17 @@ async fn normalize_attachments(
             .media_store
             .get_media_owner(attachment.id.as_str())
             .await
-            .map_err(|error| ErrorResponseDto {
-                message: error.to_string(),
-            })?;
+            .map_err(|error| ErrorResponseDto::from_code(VALIDATION_ERROR, error.to_string()))?;
 
         match owner.as_deref() {
             Some(owner_user_id) if owner_user_id == user_id => {
                 attachment.url = state.media_store.browser_media_url(attachment.id.as_str());
             }
             _ => {
-                return Err(ErrorResponseDto {
-                    message: "One or more uploaded images do not belong to the current user"
-                        .to_string(),
-                })
+                return Err(ErrorResponseDto::from_code(
+                    ATTACHMENT_ACCESS_DENIED,
+                    "One or more uploaded images do not belong to the current user",
+                ));
             }
         }
     }
@@ -153,13 +150,7 @@ pub async fn send_message(
             Json(ChatAcceptedResponseDto::from(accepted)),
         )
             .into_response(),
-        Err(error) => (
-            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(ErrorResponseDto {
-                message: error.message,
-            }),
-        )
-            .into_response(),
+        Err(error) => chat_service_error_response(error.status_code, error.message),
     }
 }
 
@@ -173,18 +164,17 @@ pub async fn stream(
         .authorize_session(&auth, openchat_security_core::Action::Read, session_id.as_str())
         .await
     {
+        let descriptor = if error.message == "Session not found" {
+            SESSION_NOT_FOUND
+        } else {
+            AUTHORIZATION_DENIED
+        };
         let status = if error.message == "Session not found" {
             StatusCode::NOT_FOUND
         } else {
             StatusCode::FORBIDDEN
         };
-        return (
-            status,
-            Json(ErrorResponseDto {
-                message: error.message,
-            }),
-        )
-            .into_response();
+        return error_response(status, descriptor, error.message);
     }
 
     let mut receiver = match state
@@ -193,16 +183,7 @@ pub async fn stream(
         .await
     {
         Ok(receiver) => receiver,
-        Err(error) => {
-            return (
-                StatusCode::from_u16(error.status_code)
-                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                Json(ErrorResponseDto {
-                    message: error.message,
-                }),
-            )
-                .into_response()
-        }
+        Err(error) => return chat_service_error_response(error.status_code, error.message),
     };
 
     let event_stream = async_stream::stream! {

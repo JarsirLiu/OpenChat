@@ -7,7 +7,7 @@ use axum::{
 };
 use openchat_security_core::{AuthContext, AuthenticationError};
 
-use crate::http::errors::ErrorResponseDto;
+use crate::http::errors::{ErrorResponseDto, AUTHENTICATION_REQUIRED};
 
 #[derive(Clone, Debug)]
 pub struct CurrentUser(pub AuthContext);
@@ -38,7 +38,10 @@ where
 
         Err((
             StatusCode::UNAUTHORIZED,
-            Json(ErrorResponseDto { message }),
+            Json(ErrorResponseDto::from_code(
+                AUTHENTICATION_REQUIRED,
+                message,
+            )),
         )
             .into_response())
     }

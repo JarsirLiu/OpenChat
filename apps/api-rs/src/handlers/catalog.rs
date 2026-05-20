@@ -3,6 +3,7 @@ use openchat_catalog_core::CatalogModel;
 
 use crate::{
     http::catalog::{CatalogModelDto, CatalogToolDto},
+    http::errors::chat_service_error_response,
     security::extractors::CurrentUser,
     state::AppState,
 };
@@ -61,14 +62,7 @@ pub async fn list_models(
         .await
     {
         Ok(items) => items,
-        Err(error) => {
-            return (
-                axum::http::StatusCode::from_u16(error.status_code)
-                    .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                Json(serde_json::json!({ "message": error.message })),
-            )
-                .into_response();
-        }
+        Err(error) => return chat_service_error_response(error.status_code, error.message),
     };
 
     for custom in custom_models {

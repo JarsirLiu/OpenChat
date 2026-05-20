@@ -1,3 +1,5 @@
+import { ApiError, createApiError } from './apiError'
+
 export interface AuthUser {
   id: string
   username: string
@@ -13,12 +15,14 @@ interface CsrfResponse {
   csrf_token: string
 }
 
-export class AuthError extends Error {
-  status: number
-
-  constructor(message: string, status: number) {
-    super(message)
-    this.status = status
+export class AuthError extends ApiError {
+  constructor(message: string, status: number, code?: string | null) {
+    super(message, {
+      status,
+      code,
+      category: status === 401 ? 'authentication' : 'authorization',
+      retryable: false,
+    })
   }
 }
 
@@ -81,8 +85,8 @@ async function refreshSession() {
 
 async function parseUserResponse(response: Response, fallbackMessage: string) {
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null
-    throw new AuthError(payload?.message ?? fallbackMessage, response.status)
+    const apiError = await createApiError(response, fallbackMessage)
+    throw new AuthError(apiError.message, response.status, apiError.code)
   }
 
   const payload = (await response.json()) as UserInfoResponse
@@ -149,8 +153,8 @@ export async function fetchCurrentUser() {
       clearAuthData()
       return null
     }
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null
-    throw new AuthError(payload?.message ?? 'Authentication failed', response.status)
+    const apiError = await createApiError(response, 'Authentication failed')
+    throw new AuthError(apiError.message, response.status, apiError.code)
   }
 
   const payload = (await response.json()) as UserInfoResponse

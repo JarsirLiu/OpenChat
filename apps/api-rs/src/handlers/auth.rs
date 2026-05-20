@@ -11,7 +11,10 @@ use openchat_account_core::{
 use axum_extra::extract::cookie::CookieJar;
 
 use crate::{
-    http::errors::ErrorResponseDto,
+    http::errors::{
+        chat_service_error_response, error_response, ErrorResponseDto,
+        AUTHENTICATION_REQUIRED, CUSTOM_MODEL_NOT_FOUND,
+    },
     security::csrf,
     security::extractors::CurrentUser,
     state::AppState,
@@ -142,11 +145,7 @@ pub async fn list_user_provider_api_keys(
                 .collect::<Vec<_>>(),
         )
         .into_response(),
-        Err(error) => (
-            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(serde_json::json!({ "message": error.message })),
-        )
-            .into_response(),
+        Err(error) => chat_service_error_response(error.status_code, error.message),
     }
 }
 
@@ -161,11 +160,7 @@ pub async fn upsert_user_provider_api_key(
         .await
     {
         Ok(setting) => Json(UserProviderApiKeyDto::from(setting)).into_response(),
-        Err(error) => (
-            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(serde_json::json!({ "message": error.message })),
-        )
-            .into_response(),
+        Err(error) => chat_service_error_response(error.status_code, error.message),
     }
 }
 
@@ -185,11 +180,7 @@ pub async fn list_user_custom_models(
                 .collect::<Vec<_>>(),
         )
         .into_response(),
-        Err(error) => (
-            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(serde_json::json!({ "message": error.message })),
-        )
-            .into_response(),
+        Err(error) => chat_service_error_response(error.status_code, error.message),
     }
 }
 
@@ -204,11 +195,7 @@ pub async fn create_user_custom_model(
         .await
     {
         Ok(item) => (StatusCode::CREATED, Json(UserCustomModelDto::from(item))).into_response(),
-        Err(error) => (
-            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(serde_json::json!({ "message": error.message })),
-        )
-            .into_response(),
+        Err(error) => chat_service_error_response(error.status_code, error.message),
     }
 }
 
@@ -223,16 +210,12 @@ pub async fn delete_user_custom_model(
         .await
     {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
-        Ok(false) => (
+        Ok(false) => error_response(
             StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "message": "Custom model not found" })),
-        )
-            .into_response(),
-        Err(error) => (
-            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(serde_json::json!({ "message": error.message })),
-        )
-            .into_response(),
+            CUSTOM_MODEL_NOT_FOUND,
+            "Custom model not found",
+        ),
+        Err(error) => chat_service_error_response(error.status_code, error.message),
     }
 }
 
@@ -241,9 +224,10 @@ fn auth_error_response(error: AuthError) -> axum::response::Response {
         StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     (
         status_code,
-        Json(ErrorResponseDto {
-            message: error.message,
-        }),
+        Json(ErrorResponseDto::from_code(
+            AUTHENTICATION_REQUIRED,
+            error.message,
+        )),
     )
         .into_response()
 }

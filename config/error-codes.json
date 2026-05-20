@@ -1,0 +1,126 @@
+{
+  "apiErrors": {
+    "authenticationRequired": {
+      "code": "authentication_required",
+      "category": "authentication",
+      "retryable": false
+    },
+    "authorizationDenied": {
+      "code": "authorization_denied",
+      "category": "authorization",
+      "retryable": false
+    },
+    "csrfValidationFailed": {
+      "code": "csrf_validation_failed",
+      "category": "security",
+      "retryable": false
+    },
+    "sessionNotFound": {
+      "code": "session_not_found",
+      "category": "not_found",
+      "retryable": false
+    },
+    "turnNotFound": {
+      "code": "turn_not_found",
+      "category": "not_found",
+      "retryable": false
+    },
+    "mediaNotFound": {
+      "code": "media_not_found",
+      "category": "not_found",
+      "retryable": false
+    },
+    "customModelNotFound": {
+      "code": "custom_model_not_found",
+      "category": "not_found",
+      "retryable": false
+    },
+    "validationError": {
+      "code": "validation_error",
+      "category": "validation",
+      "retryable": false
+    },
+    "unsupportedUploadType": {
+      "code": "unsupported_upload_type",
+      "category": "validation",
+      "retryable": false
+    },
+    "uploadPayloadInvalid": {
+      "code": "upload_payload_invalid",
+      "category": "validation",
+      "retryable": false
+    },
+    "attachmentAccessDenied": {
+      "code": "attachment_access_denied",
+      "category": "authorization",
+      "retryable": false
+    },
+    "providerApiKeyRequired": {
+      "code": "provider_api_key_required",
+      "category": "configuration",
+      "retryable": false
+    },
+    "modelUnavailable": {
+      "code": "model_unavailable",
+      "category": "configuration",
+      "retryable": false
+    },
+    "toolUnavailable": {
+      "code": "tool_unavailable",
+      "category": "configuration",
+      "retryable": false
+    },
+    "resourceNotFound": {
+      "code": "resource_not_found",
+      "category": "not_found",
+      "retryable": false
+    },
+    "conflict": {
+      "code": "conflict",
+      "category": "conflict",
+      "retryable": false
+    },
+    "rateLimited": {
+      "code": "rate_limited",
+      "category": "rate_limit",
+      "retryable": true
+    },
+    "upstreamError": {
+      "code": "upstream_error",
+      "category": "upstream",
+      "retryable": true
+    },
+    "serviceUnavailable": {
+      "code": "service_unavailable",
+      "category": "availability",
+      "retryable": true
+    },
+    "gatewayTimeout": {
+      "code": "gateway_timeout",
+      "category": "timeout",
+      "retryable": true
+    },
+    "internalError": {
+      "code": "internal_error",
+      "category": "internal",
+      "retryable": false
+    }
+  },
+  "clientErrors": {
+    "modelSelectionRequired": {
+      "code": "model_selection_required",
+      "category": "validation",
+      "retryable": false
+    },
+    "imageInputNotSupported": {
+      "code": "image_input_not_supported",
+      "category": "validation",
+      "retryable": false
+    },
+    "invalidChatAcceptance": {
+      "code": "invalid_chat_acceptance",
+      "category": "protocol",
+      "retryable": true
+    }
+  }
+}

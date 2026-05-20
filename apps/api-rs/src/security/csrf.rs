@@ -10,7 +10,10 @@ use axum_extra::extract::cookie::CookieJar;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::RngCore;
 
-use crate::{http::errors::ErrorResponseDto, state::AppState};
+use crate::{
+    http::errors::{ErrorResponseDto, CSRF_VALIDATION_FAILED},
+    state::AppState,
+};
 
 pub fn new_token() -> String {
     let mut bytes = [0_u8; 24];
@@ -52,9 +55,10 @@ pub fn validate_request(request: &Request<Body>, state: &AppState) -> Result<(),
         (Some(cookie), Some(header_value)) if cookie == header_value => Ok(()),
         _ => Err((
             StatusCode::FORBIDDEN,
-            Json(ErrorResponseDto {
-                message: "CSRF validation failed".to_string(),
-            }),
+            Json(ErrorResponseDto::from_code(
+                CSRF_VALIDATION_FAILED,
+                "CSRF validation failed",
+            )),
         )
             .into_response()),
     }

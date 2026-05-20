@@ -6,6 +6,10 @@ use axum::{
 };
 
 use crate::{
+    http::errors::{
+        chat_service_error_response, error_response, AUTHORIZATION_DENIED, SESSION_NOT_FOUND,
+        TURN_NOT_FOUND,
+    },
     http::turns::TurnInterruptAcceptedDto,
     security::extractors::CurrentUser,
     state::AppState,
@@ -21,16 +25,11 @@ pub async fn interrupt_turn(
         .authorize_session(&auth, openchat_security_core::Action::Update, session_id.as_str())
         .await
     {
-        let status = if error.message == "Session not found" {
-            StatusCode::NOT_FOUND
-        } else {
-            StatusCode::FORBIDDEN
-        };
-        return (
-            status,
-            Json(serde_json::json!({ "message": error.message })),
-        )
-            .into_response();
+        if error.message == "Session not found" {
+            return error_response(StatusCode::NOT_FOUND, SESSION_NOT_FOUND, error.message);
+        }
+
+        return error_response(StatusCode::FORBIDDEN, AUTHORIZATION_DENIED, error.message);
     }
 
     match state
@@ -43,15 +42,11 @@ pub async fn interrupt_turn(
             Json(TurnInterruptAcceptedDto { ok: true }),
         )
             .into_response(),
-        Ok(false) => (
+        Ok(false) => error_response(
             StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "message": "Turn not found or no longer running" })),
-        )
-            .into_response(),
-        Err(error) => (
-            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(serde_json::json!({ "message": error.message })),
-        )
-            .into_response(),
+            TURN_NOT_FOUND,
+            "Turn not found or no longer running",
+        ),
+        Err(error) => chat_service_error_response(error.status_code, error.message),
     }
 }

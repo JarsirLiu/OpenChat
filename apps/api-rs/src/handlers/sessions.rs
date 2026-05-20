@@ -6,6 +6,10 @@ use axum::{
 };
 
 use crate::{
+    http::errors::{
+        chat_service_error_response, error_response, AUTHORIZATION_DENIED, SESSION_NOT_FOUND,
+        VALIDATION_ERROR,
+    },
     http::sessions::{
         RenameSessionDto, SessionDetailDto, SessionHistoryPageDto, SessionHistoryQueryDto,
         SessionListItemDto, SessionMessageDto, SessionToolCallSummaryDto,
@@ -15,13 +19,11 @@ use crate::{
 };
 
 fn session_access_denied_response(error: openchat_security_core::AuthorizationError) -> axum::response::Response {
-    let status = if error.message == "Session not found" {
-        StatusCode::NOT_FOUND
-    } else {
-        StatusCode::FORBIDDEN
-    };
+    if error.message == "Session not found" {
+        return error_response(StatusCode::NOT_FOUND, SESSION_NOT_FOUND, error.message);
+    }
 
-    (status, Json(serde_json::json!({ "message": error.message }))).into_response()
+    error_response(StatusCode::FORBIDDEN, AUTHORIZATION_DENIED, error.message)
 }
 
 pub async fn list_sessions(
@@ -42,11 +44,7 @@ pub async fn list_sessions(
                 .collect::<Vec<_>>();
             (StatusCode::OK, Json(sessions)).into_response()
         }
-        Err(error) => (
-            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(serde_json::json!({ "message": error.message })),
-        )
-            .into_response(),
+        Err(error) => chat_service_error_response(error.status_code, error.message),
     }
 }
 
@@ -70,22 +68,15 @@ pub async fn get_session(
         .await
     {
         Ok(item) => item,
-        Err(error) => {
-            return (
-                StatusCode::from_u16(error.status_code)
-                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                Json(serde_json::json!({ "message": error.message })),
-            )
-                .into_response()
-        }
+        Err(error) => return chat_service_error_response(error.status_code, error.message),
     };
 
     let Some(session) = session else {
-        return (
+        return error_response(
             StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "message": "Session not found" })),
-        )
-            .into_response();
+            SESSION_NOT_FOUND,
+            "Session not found",
+        );
     };
 
     match state
@@ -142,11 +133,7 @@ pub async fn get_session(
             }),
         )
             .into_response(),
-        Err(error) => (
-            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(serde_json::json!({ "message": error.message })),
-        )
-            .into_response(),
+        Err(error) => chat_service_error_response(error.status_code, error.message),
     }
 }
 
@@ -169,16 +156,12 @@ pub async fn delete_session(
         .await
     {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
-        Ok(false) => (
+        Ok(false) => error_response(
             StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "message": "Session not found" })),
-        )
-            .into_response(),
-        Err(error) => (
-            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(serde_json::json!({ "message": error.message })),
-        )
-            .into_response(),
+            SESSION_NOT_FOUND,
+            "Session not found",
+        ),
+        Err(error) => chat_service_error_response(error.status_code, error.message),
     }
 }
 
@@ -198,11 +181,11 @@ pub async fn rename_session(
 
     let title = payload.title.trim();
     if title.is_empty() {
-        return (
+        return error_response(
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "message": "Session title cannot be empty" })),
-        )
-            .into_response();
+            VALIDATION_ERROR,
+            "Session title cannot be empty",
+        );
     }
 
     match state
@@ -221,15 +204,11 @@ pub async fn rename_session(
             }),
         )
             .into_response(),
-        Ok(None) => (
+        Ok(None) => error_response(
             StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "message": "Session not found" })),
-        )
-            .into_response(),
-        Err(error) => (
-            StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(serde_json::json!({ "message": error.message })),
-        )
-            .into_response(),
+            SESSION_NOT_FOUND,
+            "Session not found",
+        ),
+        Err(error) => chat_service_error_response(error.status_code, error.message),
     }
 }

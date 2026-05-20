@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { authenticatedFetch, AuthError } from '../../lib/auth'
+import { ApiError, ensureOk, toApiError } from '../../lib/apiError'
 
 export interface SessionListItem {
   id: string
@@ -12,7 +13,7 @@ export interface SessionListItem {
 export function useSessions(currentUserId: string | null, onUnauthorized: () => void) {
   const [sessions, setSessions] = useState<SessionListItem[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<ApiError | null>(null)
 
   useEffect(() => {
     let active = true
@@ -28,10 +29,10 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
       setLoading(true)
       setError(null)
       try {
-        const response = await authenticatedFetch('/api/sessions')
-        if (!response.ok) {
-          throw new Error('Failed to load sessions')
-        }
+        const response = await ensureOk(
+          await authenticatedFetch('/api/sessions'),
+          'Failed to load sessions',
+        )
         const payload = (await response.json()) as SessionListItem[]
         if (!active) {
           return
@@ -44,7 +45,7 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
         if (error instanceof AuthError && error.status === 401) {
           onUnauthorized()
         }
-        setError(error instanceof Error ? error.message : 'Failed to load sessions')
+        setError(toApiError(error, 'Failed to load sessions'))
       } finally {
         if (active) {
           setLoading(false)
@@ -85,17 +86,17 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
     setLoading(true)
     setError(null)
     try {
-      const response = await authenticatedFetch('/api/sessions')
-      if (!response.ok) {
-        throw new Error('Failed to load sessions')
-      }
+      const response = await ensureOk(
+        await authenticatedFetch('/api/sessions'),
+        'Failed to load sessions',
+      )
       const payload = (await response.json()) as SessionListItem[]
       setSessions(payload)
     } catch (error) {
       if (error instanceof AuthError && error.status === 401) {
         onUnauthorized()
       }
-      setError(error instanceof Error ? error.message : 'Failed to load sessions')
+      setError(toApiError(error, 'Failed to load sessions'))
       throw error
     } finally {
       setLoading(false)
@@ -103,28 +104,18 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
   }, [currentUserId, onUnauthorized])
 
   const deleteSession = useCallback(async (sessionId: string) => {
-    const response = await authenticatedFetch(`/api/sessions/${sessionId}`, {
+    await ensureOk(await authenticatedFetch(`/api/sessions/${sessionId}`, {
       method: 'DELETE',
-    })
-
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { message?: string } | null
-      throw new Error(payload?.message ?? 'Failed to delete session')
-    }
+    }), 'Failed to delete session')
 
     setSessions((current) => current.filter((session) => session.id !== sessionId))
   }, [])
 
   const renameSession = useCallback(async (sessionId: string, title: string) => {
-    const response = await authenticatedFetch(`/api/sessions/${sessionId}`, {
+    const response = await ensureOk(await authenticatedFetch(`/api/sessions/${sessionId}`, {
       method: 'PUT',
       body: JSON.stringify({ title }),
-    })
-
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { message?: string } | null
-      throw new Error(payload?.message ?? 'Failed to rename session')
-    }
+    }), 'Failed to rename session')
 
     const payload = (await response.json()) as SessionListItem
     upsertSession(payload)
@@ -134,7 +125,8 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
   return {
     sessions,
     loading,
-    error,
+    error: error?.message ?? null,
+    errorCode: error?.code ?? null,
     refresh,
     deleteSession,
     upsertSession,

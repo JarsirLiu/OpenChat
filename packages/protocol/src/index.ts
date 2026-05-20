@@ -1,5 +1,6 @@
 export const PROTOCOL_VERSION = 'openchat-stream-v1' as const
 export const RESOURCE_MODEL = 'session' as const
+export * from './errorCodes'
 
 export type SessionStatus = 'idle' | 'running' | 'completed' | 'interrupted' | 'failed' | 'archived'
 export type TurnStatus = 'running' | 'completed' | 'interrupted' | 'failed'

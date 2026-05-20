@@ -3,12 +3,14 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
-    Json,
 };
 use serde::Deserialize;
 
 use crate::{
-    http::errors::ErrorResponseDto,
+    http::errors::{
+        error_response, AUTHENTICATION_REQUIRED, AUTHORIZATION_DENIED, INTERNAL_ERROR,
+        MEDIA_NOT_FOUND,
+    },
     security::extractors::MaybeCurrentUser,
     state::AppState,
 };
@@ -26,23 +28,13 @@ pub async fn get_media(
 ) -> impl IntoResponse {
     let owner_user_id = match state.media_store.get_media_owner(path.as_str()).await {
         Ok(Some(user_id)) => user_id,
-        Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponseDto {
-                    message: "Media not found".to_string(),
-                }),
-            )
-                .into_response()
-        }
+        Ok(None) => return error_response(StatusCode::NOT_FOUND, MEDIA_NOT_FOUND, "Media not found"),
         Err(error) => {
-            return (
+            return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponseDto {
-                    message: error.to_string(),
-                }),
+                INTERNAL_ERROR,
+                error.to_string(),
             )
-                .into_response()
         }
     };
 
@@ -62,34 +54,25 @@ pub async fn get_media(
         } else {
             StatusCode::UNAUTHORIZED
         };
-        return (
-            status,
-            Json(ErrorResponseDto {
-                message: "Media access denied".to_string(),
-            }),
-        )
-            .into_response();
+        let descriptor = if auth.is_some() {
+            AUTHORIZATION_DENIED
+        } else {
+            AUTHENTICATION_REQUIRED
+        };
+        return error_response(status, descriptor, "Media access denied");
     }
 
     let Some(media) = (match state.media_store.get_bytes(path.as_str()).await {
         Ok(media) => media,
         Err(error) => {
-            return (
+            return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponseDto {
-                    message: error.to_string(),
-                }),
+                INTERNAL_ERROR,
+                error.to_string(),
             )
-                .into_response()
         }
     }) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponseDto {
-                message: "Media not found".to_string(),
-            }),
-        )
-            .into_response();
+        return error_response(StatusCode::NOT_FOUND, MEDIA_NOT_FOUND, "Media not found");
     };
 
     let mut headers = HeaderMap::new();

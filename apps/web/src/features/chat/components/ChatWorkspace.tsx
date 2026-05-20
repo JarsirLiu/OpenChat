@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Conversation } from '@openchat/ui'
 import type { AuthUser } from '../../../lib/auth'
+import { isProviderConfigurationError } from '../../../lib/apiError'
 import { ChatComposer } from './ChatComposer'
 import { ChatHeader } from './ChatHeader'
 import { ChatLanding } from './ChatLanding'
@@ -17,20 +18,6 @@ interface ChatWorkspaceProps {
   onOpenNewSession: () => void
 }
 
-const shouldPromptProviderSettings = (message: string | null) => {
-  if (!message) {
-    return false
-  }
-
-  return [
-    'api key',
-    'save api key',
-    '配置当前模型',
-    '保存 api key',
-    '当前模型不可用',
-  ].some((pattern) => message.toLowerCase().includes(pattern))
-}
-
 export function ChatWorkspace({
   currentUser,
   onLogout,
@@ -44,7 +31,7 @@ export function ChatWorkspace({
   const [renameValue, setRenameValue] = useState('')
   const [renamePending, setRenamePending] = useState(false)
   const {
-    catalogError,
+    catalogErrorCode,
     catalogLoading,
     currentSession,
     handleDeleteSession,
@@ -57,7 +44,7 @@ export function ChatWorkspace({
     imageTools,
     pending,
     requestPending,
-    requestError,
+    requestErrorCode,
     historyHasMore,
     historyLoading,
     loadOlderHistory,
@@ -131,10 +118,13 @@ export function ChatWorkspace({
   }, [historyHasMore, historyLoading, loadOlderHistory])
 
   useEffect(() => {
-    if (shouldPromptProviderSettings(requestError) || shouldPromptProviderSettings(catalogError)) {
+    if (
+      isProviderConfigurationError(requestErrorCode ? { code: requestErrorCode } : null) ||
+      isProviderConfigurationError(catalogErrorCode ? { code: catalogErrorCode } : null)
+    ) {
       setSettingsOpen(true)
     }
-  }, [catalogError, requestError])
+  }, [catalogErrorCode, requestErrorCode])
 
   useEffect(() => {
     if (!renameDialogOpen) {

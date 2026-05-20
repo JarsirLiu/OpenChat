@@ -5,7 +5,13 @@ use axum::{
     Json,
 };
 use crate::{
-    http::{errors::ErrorResponseDto, upload::UploadedImageDto},
+    http::{
+        errors::{
+            chat_service_error_response, ErrorResponseDto, UNSUPPORTED_UPLOAD_TYPE,
+            UPLOAD_PAYLOAD_INVALID,
+        },
+        upload::UploadedImageDto,
+    },
     security::extractors::CurrentUser,
     state::AppState,
 };
@@ -25,9 +31,10 @@ pub async fn upload_images(
         Err(error) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(ErrorResponseDto {
-                    message: format!("Failed to read upload payload: {error}"),
-                }),
+                Json(ErrorResponseDto::from_code(
+                    UPLOAD_PAYLOAD_INVALID,
+                    format!("Failed to read upload payload: {error}"),
+                )),
             )
                 .into_response()
         }
@@ -44,11 +51,12 @@ pub async fn upload_images(
         {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(ErrorResponseDto {
-                    message: format!(
+                Json(ErrorResponseDto::from_code(
+                    UNSUPPORTED_UPLOAD_TYPE,
+                    format!(
                         "Unsupported upload type `{mime_type}`. Only PNG, JPG/JPEG, and WebP are supported."
                     ),
-                }),
+                )),
             )
                 .into_response();
         }
@@ -58,9 +66,10 @@ pub async fn upload_images(
             Err(error) => {
                 return (
                     StatusCode::BAD_REQUEST,
-                    Json(ErrorResponseDto {
-                        message: format!("Failed to read uploaded image bytes: {error}"),
-                    }),
+                    Json(ErrorResponseDto::from_code(
+                        UPLOAD_PAYLOAD_INVALID,
+                        format!("Failed to read uploaded image bytes: {error}"),
+                    )),
                 )
                     .into_response()
             }
@@ -80,13 +89,7 @@ pub async fn upload_images(
         {
             Ok(stored) => stored,
             Err(error) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponseDto {
-                        message: error.message,
-                    }),
-                )
-                    .into_response()
+                return chat_service_error_response(error.status_code, error.message)
             }
         };
 

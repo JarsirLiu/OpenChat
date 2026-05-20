@@ -7,6 +7,7 @@ import {
 import { type ChatMessage, type ChatStreamEvent } from '@openchat/protocol'
 import type { AuthUser } from '../../lib/auth'
 import { authenticatedFetch } from '../../lib/auth'
+import { ApiError, API_ERROR_CODES, CLIENT_ERROR_CODES, ensureOk, toApiError } from '../../lib/apiError'
 import { buildChatRequest } from './request'
 import {
   createSessionId,
@@ -78,7 +79,7 @@ export function useChatWorkspace({
   )
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<UploadedImageAttachment[]>([])
-  const [requestError, setRequestError] = useState<string | null>(null)
+  const [requestErrorState, setRequestErrorState] = useState<ApiError | null>(null)
   const [requestPending, setRequestPending] = useState(false)
 
   useEffect(() => {
@@ -86,9 +87,12 @@ export function useChatWorkspace({
     dispatch({ type: 'reset' })
     setInput('')
     setAttachments([])
-    setRequestError(null)
+    setRequestErrorState(null)
     setRequestPending(false)
   }, [currentUser.id, sessionId])
+
+  const requestError = requestErrorState?.message ?? null
+  const requestErrorCode = requestErrorState?.code ?? null
 
   useEffect(() => {
     if (!requestError) {
@@ -96,7 +100,7 @@ export function useChatWorkspace({
     }
 
     const timer = window.setTimeout(() => {
-      setRequestError((current) => (current === requestError ? null : current))
+      setRequestErrorState((current) => (current?.message === requestError ? null : current))
     }, 5000)
 
     return () => {
@@ -107,6 +111,7 @@ export function useChatWorkspace({
   const {
     loading: catalogLoading,
     error: catalogError,
+    errorCode: catalogErrorCode,
     imageMenuItems,
     imageTools,
     selectedTextModelId,
@@ -127,6 +132,7 @@ export function useChatWorkspace({
     sessions,
     loading: sessionsLoading,
     error: sessionsError,
+    errorCode: sessionsErrorCode,
     upsertSession,
     renameSession,
     deleteSession,
@@ -201,27 +207,44 @@ export function useChatWorkspace({
   const runChatTurn = useCallback(
     async (prompt: string) => {
       if (!selectedTextModel) {
-        throw new Error('Select a text model before starting a conversation')
+        throw new ApiError('Select a text model before starting a conversation', {
+          status: 400,
+          code: CLIENT_ERROR_CODES.modelSelectionRequired.code,
+          category: CLIENT_ERROR_CODES.modelSelectionRequired.category,
+          retryable: CLIENT_ERROR_CODES.modelSelectionRequired.retryable,
+        })
       }
       if (selectedTextModel.available === false) {
-        throw new Error(
+        throw new ApiError(
           selectedTextModel.unavailable_reason ??
             '请先在右侧参数中配置当前模型的 API Key，然后再发送消息',
+          {
+            status: 400,
+            code: API_ERROR_CODES.providerApiKeyRequired.code,
+            category: API_ERROR_CODES.providerApiKeyRequired.category,
+            retryable: API_ERROR_CODES.providerApiKeyRequired.retryable,
+          },
         )
       }
       if (selectedImageTool && !selectedImageTool.available) {
-        throw new Error(
+        throw new ApiError(
           selectedImageTool.unavailable_reason ??
             'The selected image tool is not available for this account',
+          {
+            status: 400,
+            code: API_ERROR_CODES.toolUnavailable.code,
+            category: API_ERROR_CODES.toolUnavailable.category,
+            retryable: API_ERROR_CODES.toolUnavailable.retryable,
+          },
         )
       }
-      setRequestError(null)
+      setRequestErrorState(null)
       setRequestPending(true)
       const targetSessionId = activeSessionId ?? createSessionId()
       ensureSessionPreference(currentUser.id, targetSessionId)
 
       try {
-        const response = await authenticatedFetch('/api/chat', {
+        const response = await ensureOk(await authenticatedFetch('/api/chat', {
           method: 'POST',
           body: JSON.stringify(
             buildChatRequest(
@@ -232,16 +255,16 @@ export function useChatWorkspace({
               attachments,
             ),
           ),
-        })
-
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as { message?: string } | null
-          throw new Error(payload?.message ?? 'Failed to start OpenChat chat turn')
-        }
+        }), 'Failed to start OpenChat chat turn')
 
         const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>
         if (payload.status !== 'done') {
-          throw new Error('OpenChat server did not accept the chat request')
+          throw new ApiError('OpenChat server did not accept the chat request', {
+            status: 502,
+            code: CLIENT_ERROR_CODES.invalidChatAcceptance.code,
+            category: CLIENT_ERROR_CODES.invalidChatAcceptance.category,
+            retryable: CLIENT_ERROR_CODES.invalidChatAcceptance.retryable,
+          })
         }
 
         const acceptedSessionId =
@@ -283,14 +306,14 @@ export function useChatWorkspace({
 
     setInput('')
     setAttachments([])
-    setRequestError(null)
+    setRequestErrorState(null)
 
     try {
       await runChatTurn(next)
     } catch (error) {
       setInput((current) => (current ? current : next))
       setAttachments((current) => (current.length === 0 ? attachments : current))
-      setRequestError(error instanceof Error ? error.message : 'Unknown OpenChat request failure')
+      setRequestErrorState(toApiError(error, 'Unknown OpenChat request failure'))
     }
   }, [attachments, input, pending, runChatTurn, selectedTextModel])
 
@@ -304,16 +327,26 @@ export function useChatWorkspace({
         const imageFiles = filterSupportedImageFiles(files)
         if (imageFiles.length === 0) {
           if (files.length > 0) {
-            throw new Error(getUnsupportedImageMessage())
+            throw new ApiError(getUnsupportedImageMessage(), {
+              status: 400,
+              code: API_ERROR_CODES.unsupportedUploadType.code,
+              category: API_ERROR_CODES.unsupportedUploadType.category,
+              retryable: API_ERROR_CODES.unsupportedUploadType.retryable,
+            })
           }
           return
         }
 
         if (!selectedModelSupportsImageInputs) {
-          throw new Error('当前模型不支持图像输入，请切换到多模态模型后再上传图片')
+          throw new ApiError('当前模型不支持图像输入，请切换到多模态模型后再上传图片', {
+            status: 400,
+            code: CLIENT_ERROR_CODES.imageInputNotSupported.code,
+            category: CLIENT_ERROR_CODES.imageInputNotSupported.category,
+            retryable: CLIENT_ERROR_CODES.imageInputNotSupported.retryable,
+          })
         }
 
-        setRequestError(null)
+        setRequestErrorState(null)
         const preparedFiles = await compressImageFiles(imageFiles)
 
         const formData = new FormData()
@@ -321,15 +354,10 @@ export function useChatWorkspace({
           formData.append('files', file, file.name)
         }
 
-        const response = await authenticatedFetch('/api/uploads/images', {
+        const response = await ensureOk(await authenticatedFetch('/api/uploads/images', {
           method: 'POST',
           body: formData,
-        })
-
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as { message?: string } | null
-          throw new Error(payload?.message ?? '图片上传失败')
-        }
+        }), '图片上传失败')
 
         const uploaded = (await response.json()) as UploadedImageAttachment[]
         setAttachments((current) => {
@@ -340,7 +368,7 @@ export function useChatWorkspace({
           ]
         })
       } catch (error) {
-        setRequestError(error instanceof Error ? error.message : '图片上传失败')
+        setRequestErrorState(toApiError(error, '图片上传失败'))
       }
     },
     [selectedModelSupportsImageInputs],
@@ -357,14 +385,14 @@ export function useChatWorkspace({
   const handleDeleteSession = useCallback(
     async (targetSessionId: string) => {
       try {
-        setRequestError(null)
+        setRequestErrorState(null)
         await deleteSession(targetSessionId)
 
         if (targetSessionId === activeSessionId) {
           createAndSelectSession()
         }
       } catch (error) {
-        setRequestError(error instanceof Error ? error.message : 'Failed to delete session')
+        setRequestErrorState(toApiError(error, 'Failed to delete session'))
       }
     },
     [activeSessionId, createAndSelectSession, deleteSession],
@@ -374,14 +402,19 @@ export function useChatWorkspace({
     async (targetSessionId: string, title: string) => {
       const normalizedTitle = title.trim()
       if (!normalizedTitle) {
-        throw new Error('会话标题不能为空')
+        throw new ApiError('会话标题不能为空', {
+          status: 400,
+          code: API_ERROR_CODES.validationError.code,
+          category: API_ERROR_CODES.validationError.category,
+          retryable: API_ERROR_CODES.validationError.retryable,
+        })
       }
 
       try {
-        setRequestError(null)
+        setRequestErrorState(null)
         return await renameSession(targetSessionId, normalizedTitle)
       } catch (error) {
-        setRequestError(error instanceof Error ? error.message : 'Failed to rename session')
+        setRequestErrorState(toApiError(error, 'Failed to rename session'))
         throw error
       }
     },
@@ -394,25 +427,21 @@ export function useChatWorkspace({
     }
 
     try {
-      setRequestError(null)
-      const response = await authenticatedFetch(
+      setRequestErrorState(null)
+      await ensureOk(await authenticatedFetch(
         `/api/sessions/${activeSessionId}/turns/${runtimeState.activeTurnId}/interrupt`,
         {
           method: 'POST',
         },
-      )
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { message?: string } | null
-        throw new Error(payload?.message ?? 'Failed to stop generation')
-      }
+      ), 'Failed to stop generation')
     } catch (error) {
-      setRequestError(error instanceof Error ? error.message : 'Failed to stop generation')
+      setRequestErrorState(toApiError(error, 'Failed to stop generation'))
     }
   }, [activeSessionId, runtimeState.activeTurnId, runtimeState.isStreaming])
 
   return {
     catalogError,
+    catalogErrorCode,
     catalogLoading,
     currentSession,
     handleDeleteSession,
@@ -426,6 +455,7 @@ export function useChatWorkspace({
     pending,
     requestPending,
     requestError,
+    requestErrorCode,
     runtimeState,
     historyHasMore,
     historyLoading,
@@ -437,6 +467,7 @@ export function useChatWorkspace({
     selectedTextModelId,
     sessions,
     sessionsError,
+    sessionsErrorCode,
     sessionsLoading,
     setInput,
     setSelectedImageToolKey,

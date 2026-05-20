@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, Check, CheckCircle2, ChevronDown, LoaderCircle, Plus, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { AuthError, authenticatedFetch } from '../../../lib/auth'
+import { createApiError, ensureOk, toApiError } from '../../../lib/apiError'
 import type { UserCustomModel, UserProviderApiKey } from '../types'
 
 interface ProviderSettingsDialogProps {
@@ -81,16 +82,9 @@ export function ProviderSettingsDialog({
         ])
 
         if (!providerResponse.ok || !customModelsResponse.ok) {
-          const providerPayload = (await providerResponse.json().catch(() => null)) as
-            | { message?: string }
-            | null
-          const modelPayload = (await customModelsResponse.json().catch(() => null)) as
-            | { message?: string }
-            | null
-          throw new Error(
-            providerPayload?.message ??
-              modelPayload?.message ??
-              'Failed to load model access settings',
+          throw await createApiError(
+            !providerResponse.ok ? providerResponse : customModelsResponse,
+            'Failed to load model access settings',
           )
         }
 
@@ -121,8 +115,7 @@ export function ProviderSettingsDialog({
         }
         setFeedback({
           type: 'error',
-          message:
-            error instanceof Error ? error.message : 'Failed to load model access settings',
+          message: toApiError(error, 'Failed to load model access settings').message,
         })
       } finally {
         if (active) {
@@ -184,18 +177,13 @@ export function ProviderSettingsDialog({
     setFeedback(null)
 
     try {
-      const response = await authenticatedFetch('/api/user-provider-api-keys', {
+      const response = await ensureOk(await authenticatedFetch('/api/user-provider-api-keys', {
         method: 'PUT',
         body: JSON.stringify({
           provider_key: DEFAULT_PROVIDER_KEY,
           api_key: form.apiKey.trim() || undefined,
         }),
-      })
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { message?: string } | null
-        throw new Error(payload?.message ?? 'Failed to save API key')
-      }
+      }), 'Failed to save API key')
 
       const payload = (await response.json()) as UserProviderApiKey
       setForm((current) => ({
@@ -215,7 +203,7 @@ export function ProviderSettingsDialog({
       }
       setFeedback({
         type: 'error',
-        message: error instanceof Error ? error.message : 'Failed to save API key',
+        message: toApiError(error, 'Failed to save API key').message,
       })
     } finally {
       setSaving(false)
@@ -242,7 +230,7 @@ export function ProviderSettingsDialog({
     setFeedback(null)
 
     try {
-      const response = await authenticatedFetch('/api/custom-models', {
+      const response = await ensureOk(await authenticatedFetch('/api/custom-models', {
         method: 'POST',
         body: JSON.stringify({
           model_name: draft.modelName.trim(),
@@ -250,12 +238,7 @@ export function ProviderSettingsDialog({
           base_url: draft.baseUrl.trim(),
           api_key: draft.apiKey.trim(),
         }),
-      })
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { message?: string } | null
-        throw new Error(payload?.message ?? 'Failed to create custom model')
-      }
+      }), 'Failed to create custom model')
 
       const payload = (await response.json()) as UserCustomModel
       setCustomModels((current) => [...current, payload])
@@ -272,7 +255,7 @@ export function ProviderSettingsDialog({
       }
       setFeedback({
         type: 'error',
-        message: error instanceof Error ? error.message : 'Failed to create custom model',
+        message: toApiError(error, 'Failed to create custom model').message,
       })
     } finally {
       setCreating(false)
@@ -284,17 +267,12 @@ export function ProviderSettingsDialog({
     setFeedback(null)
 
     try {
-      const response = await authenticatedFetch(
+      await ensureOk(await authenticatedFetch(
         `/api/custom-models/${encodeURIComponent(modelConfigId)}`,
         {
           method: 'DELETE',
         },
-      )
-
-      if (!response.ok && response.status !== 204) {
-        const payload = (await response.json().catch(() => null)) as { message?: string } | null
-        throw new Error(payload?.message ?? 'Failed to delete custom model')
-      }
+      ), 'Failed to delete custom model')
 
       setCustomModels((current) =>
         current.filter((item) => item.model_config_id !== modelConfigId),
@@ -311,7 +289,7 @@ export function ProviderSettingsDialog({
       }
       setFeedback({
         type: 'error',
-        message: error instanceof Error ? error.message : 'Failed to delete custom model',
+        message: toApiError(error, 'Failed to delete custom model').message,
       })
     } finally {
       setDeletingModelId(null)
