@@ -7,8 +7,8 @@ use axum::{
 
 use crate::{
     http::errors::{
-        chat_service_error_response, error_response, AUTHORIZATION_DENIED, SESSION_NOT_FOUND,
-        TURN_NOT_FOUND,
+        chat_service_error_response_from_error, error_response, AUTHORIZATION_DENIED,
+        SESSION_NOT_FOUND, TURN_NOT_FOUND,
     },
     http::turns::TurnInterruptAcceptedDto,
     security::extractors::CurrentUser,
@@ -22,7 +22,11 @@ pub async fn interrupt_turn(
 ) -> impl IntoResponse {
     if let Err(error) = state
         .resource_access
-        .authorize_session(&auth, openchat_security_core::Action::Update, session_id.as_str())
+        .authorize_session(
+            &auth,
+            openchat_security_core::Action::Update,
+            session_id.as_str(),
+        )
         .await
     {
         if error.message == "Session not found" {
@@ -47,6 +51,6 @@ pub async fn interrupt_turn(
             TURN_NOT_FOUND,
             "Turn not found or no longer running",
         ),
-        Err(error) => chat_service_error_response(error.status_code, error.message),
+        Err(error) => chat_service_error_response_from_error(error),
     }
 }

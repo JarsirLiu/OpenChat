@@ -13,7 +13,7 @@ use crate::{
     http::{
         chat::{ChatAcceptedResponseDto, ChatRequestDto, SelectedTextModelDto, SelectedToolDto},
         errors::{
-            chat_service_error_response, error_response, ErrorResponseDto,
+            chat_service_error_response_from_error, error_response, ErrorResponseDto,
             ATTACHMENT_ACCESS_DENIED, AUTHORIZATION_DENIED, SESSION_NOT_FOUND, VALIDATION_ERROR,
         },
     },
@@ -51,7 +51,7 @@ async fn validate_text_model_selection(
         )
         .await
         .map(|_| ())
-        .map_err(|error| ErrorResponseDto::from_code(VALIDATION_ERROR, error.message))
+        .map_err(ErrorResponseDto::from_chat_service_error)
 }
 
 async fn validate_tool_selection(
@@ -82,7 +82,7 @@ async fn validate_tool_selection(
         )
         .await
         .map(|_| ())
-        .map_err(|error| ErrorResponseDto::from_code(VALIDATION_ERROR, error.message))
+        .map_err(ErrorResponseDto::from_chat_service_error)
 }
 
 async fn normalize_attachments(
@@ -127,14 +127,17 @@ pub async fn send_message(
     }
 
     if let Some(selected_text_model) = payload.text_model.as_ref() {
-        if let Err(error) = validate_text_model_selection(&state, auth.user_id(), selected_text_model).await {
+        if let Err(error) =
+            validate_text_model_selection(&state, auth.user_id(), selected_text_model).await
+        {
             return (StatusCode::BAD_REQUEST, Json(error)).into_response();
         }
     }
 
     if let Some(selected_tools) = payload.tool_list.as_ref() {
         for selected_tool in selected_tools {
-            if let Err(error) = validate_tool_selection(&state, auth.user_id(), selected_tool).await {
+            if let Err(error) = validate_tool_selection(&state, auth.user_id(), selected_tool).await
+            {
                 return (StatusCode::BAD_REQUEST, Json(error)).into_response();
             }
         }
@@ -150,7 +153,7 @@ pub async fn send_message(
             Json(ChatAcceptedResponseDto::from(accepted)),
         )
             .into_response(),
-        Err(error) => chat_service_error_response(error.status_code, error.message),
+        Err(error) => chat_service_error_response_from_error(error),
     }
 }
 
@@ -161,7 +164,11 @@ pub async fn stream(
 ) -> impl IntoResponse {
     if let Err(error) = state
         .resource_access
-        .authorize_session(&auth, openchat_security_core::Action::Read, session_id.as_str())
+        .authorize_session(
+            &auth,
+            openchat_security_core::Action::Read,
+            session_id.as_str(),
+        )
         .await
     {
         let descriptor = if error.message == "Session not found" {
@@ -183,7 +190,7 @@ pub async fn stream(
         .await
     {
         Ok(receiver) => receiver,
-        Err(error) => return chat_service_error_response(error.status_code, error.message),
+        Err(error) => return chat_service_error_response_from_error(error),
     };
 
     let event_stream = async_stream::stream! {
@@ -201,5 +208,7 @@ pub async fn stream(
         }
     };
 
-    Sse::new(event_stream).keep_alive(KeepAlive::default()).into_response()
+    Sse::new(event_stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }

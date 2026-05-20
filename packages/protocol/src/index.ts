@@ -10,6 +10,7 @@ export type TurnTerminalReasonCode =
   | 'session_recovered'
   | 'model_connect_timeout'
   | 'model_stream_idle_timeout'
+  | 'provider_authentication_failed'
   | 'upstream_error'
   | 'runtime_error'
 

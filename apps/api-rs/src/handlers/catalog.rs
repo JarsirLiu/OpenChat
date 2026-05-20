@@ -3,7 +3,7 @@ use openchat_catalog_core::CatalogModel;
 
 use crate::{
     http::catalog::{CatalogModelDto, CatalogToolDto},
-    http::errors::chat_service_error_response,
+    http::errors::chat_service_error_response_from_error,
     security::extractors::CurrentUser,
     state::AppState,
 };
@@ -62,7 +62,7 @@ pub async fn list_models(
         .await
     {
         Ok(items) => items,
-        Err(error) => return chat_service_error_response(error.status_code, error.message),
+        Err(error) => return chat_service_error_response_from_error(error),
     };
 
     for custom in custom_models {

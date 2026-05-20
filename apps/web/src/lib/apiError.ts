@@ -94,6 +94,7 @@ export const isProviderConfigurationError = (
   error: ApiError | { code?: string | null } | null | undefined,
 ) =>
   error?.code === API_ERROR_CODES.providerApiKeyRequired.code ||
+  error?.code === API_ERROR_CODES.providerAuthenticationFailed.code ||
   error?.code === API_ERROR_CODES.modelUnavailable.code ||
   error?.code === API_ERROR_CODES.toolUnavailable.code
 

@@ -88,12 +88,10 @@ impl ModelRuntime {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(ChatServiceError::new(
-                502,
-                format!(
-                    "Provider `{}` request failed: {status} {body}",
-                    access.provider_key
-                ),
+            return Err(map_provider_response_error(
+                access.provider_key.as_str(),
+                status.as_u16(),
+                body,
             ));
         }
 
@@ -128,7 +126,7 @@ impl ModelRuntime {
                     let message = error
                         .message
                         .unwrap_or_else(|| "Model streaming request failed".to_string());
-                    Err(ChatServiceError::new(502, message))?;
+                    Err(ChatServiceError::upstream(message))?;
                 }
 
                 for choice in chunk.choices {
@@ -327,9 +325,7 @@ async fn build_openai_messages(
     let mut messages = Vec::new();
     messages.push(OpenAiMessage {
         role: "system".into(),
-        content: Some(OpenAiMessageContent::Text(
-            build_system_prompt(),
-        )),
+        content: Some(OpenAiMessageContent::Text(build_system_prompt())),
         tool_calls: None,
         tool_call_id: None,
     });
@@ -372,14 +368,13 @@ async fn build_openai_messages(
                 }
             }
             _ => {
-                if let Some(content) =
-                    build_openai_message_content(
-                        message,
-                        None,
-                        supports_image_inputs,
-                        media_url_resolver,
-                    )
-                    .await
+                if let Some(content) = build_openai_message_content(
+                    message,
+                    None,
+                    supports_image_inputs,
+                    media_url_resolver,
+                )
+                .await
                 {
                     messages.push(OpenAiMessage {
                         role: if message.role == "tool" {
@@ -399,13 +394,15 @@ async fn build_openai_messages(
     if has_current_user_input(plan.prompt.as_str(), plan.attachments.as_slice()) {
         messages.push(OpenAiMessage {
             role: "user".into(),
-            content: Some(build_current_user_message_content(
-                plan.prompt.as_str(),
-                plan.attachments.as_slice(),
-                supports_image_inputs,
-                media_url_resolver,
-            )
-            .await),
+            content: Some(
+                build_current_user_message_content(
+                    plan.prompt.as_str(),
+                    plan.attachments.as_slice(),
+                    supports_image_inputs,
+                    media_url_resolver,
+                )
+                .await,
+            ),
             tool_calls: None,
             tool_call_id: None,
         });
@@ -589,7 +586,23 @@ fn merge_assistant_turn_content(reasoning: Option<&str>, content: &str) -> Strin
 }
 
 fn map_runtime_error(error: anyhow::Error) -> ChatServiceError {
-    ChatServiceError::new(502, error.to_string())
+    ChatServiceError::upstream(error.to_string())
+}
+
+fn map_provider_response_error(
+    provider_key: &str,
+    status_code: u16,
+    body: String,
+) -> ChatServiceError {
+    if matches!(status_code, 401 | 403) {
+        return ChatServiceError::provider_authentication_failed(format!(
+            "Provider `{provider_key}` authentication failed. Please update the API key and try again."
+        ));
+    }
+
+    ChatServiceError::upstream(format!(
+        "Provider `{provider_key}` request failed: {status_code} {body}"
+    ))
 }
 
 #[derive(Serialize)]
@@ -685,10 +698,10 @@ mod tests {
         build_openai_message_content, build_openai_messages, model_supports_image_inputs,
         OpenAiMessageContent,
     };
-    use async_trait::async_trait;
     use crate::{
         ModelMediaUrlResolver, OutboundContentPart, OutboundMessage, OutboundToolCall, TurnPlan,
     };
+    use async_trait::async_trait;
 
     struct NoopMediaResolver;
 

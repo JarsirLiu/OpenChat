@@ -119,12 +119,13 @@ export function ChatWorkspace({
 
   useEffect(() => {
     if (
+      runtimeState.error?.code === 'provider_authentication_failed' ||
       isProviderConfigurationError(requestErrorCode ? { code: requestErrorCode } : null) ||
       isProviderConfigurationError(catalogErrorCode ? { code: catalogErrorCode } : null)
     ) {
       setSettingsOpen(true)
     }
-  }, [catalogErrorCode, requestErrorCode])
+  }, [catalogErrorCode, requestErrorCode, runtimeState.error?.code])
 
   useEffect(() => {
     if (!renameDialogOpen) {

@@ -180,10 +180,17 @@ mod tests {
     #[tokio::test]
     async fn inspect_catalog_tool_marks_allowed_tools_executable() {
         let service = ToolAccessService::new(Arc::new(AllowAllResolver));
-        let tool = crate::CatalogTool::demo_catalog()
-            .into_iter()
-            .next()
-            .expect("demo tool");
+        let tool = crate::CatalogTool {
+            model_config_id: "openchat:image:gpt-image".to_string(),
+            model_name: "gpt-image-2".to_string(),
+            id: "image_gen_oai".to_string(),
+            provider: "openai".to_string(),
+            runtime_provider: "openai_compatible".to_string(),
+            display_provider: "OpenAI".to_string(),
+            source: "openchat".to_string(),
+            tool_type: "image".to_string(),
+            display_name: "GPT Image".to_string(),
+        };
 
         let decision = service
             .inspect_catalog_tool("user_1", &tool)

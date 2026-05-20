@@ -75,12 +75,10 @@ impl ImageRuntime {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(ChatServiceError::new(
-                502,
-                format!(
-                    "Image provider `{}` request failed: {status} {body}",
-                    access.provider_key
-                ),
+            return Err(map_provider_response_error(
+                access.provider_key.as_str(),
+                status.as_u16(),
+                body,
             ));
         }
 
@@ -310,7 +308,23 @@ fn build_media_key(
 }
 
 fn map_runtime_error(error: anyhow::Error) -> ChatServiceError {
-    ChatServiceError::new(502, error.to_string())
+    ChatServiceError::upstream(error.to_string())
+}
+
+fn map_provider_response_error(
+    provider_key: &str,
+    status_code: u16,
+    body: String,
+) -> ChatServiceError {
+    if matches!(status_code, 401 | 403) {
+        return ChatServiceError::provider_authentication_failed(format!(
+            "Provider `{provider_key}` authentication failed. Please update the API key and try again."
+        ));
+    }
+
+    ChatServiceError::upstream(format!(
+        "Image provider `{provider_key}` request failed: {status_code} {body}"
+    ))
 }
 
 #[derive(Serialize)]

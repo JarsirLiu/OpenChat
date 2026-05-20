@@ -6,6 +6,7 @@ pub enum TurnTerminalReasonCode {
     SessionRecovered,
     ModelConnectTimeout,
     ModelStreamIdleTimeout,
+    ProviderAuthenticationFailed,
     UpstreamError,
     RuntimeError,
 }
@@ -17,6 +18,7 @@ impl TurnTerminalReasonCode {
             Self::SessionRecovered => "session_recovered",
             Self::ModelConnectTimeout => "model_connect_timeout",
             Self::ModelStreamIdleTimeout => "model_stream_idle_timeout",
+            Self::ProviderAuthenticationFailed => "provider_authentication_failed",
             Self::UpstreamError => "upstream_error",
             Self::RuntimeError => "runtime_error",
         }
@@ -68,6 +70,16 @@ impl TurnTerminalReason {
 
     pub fn runtime_error(message: impl Into<String>) -> Self {
         Self::new(TurnTerminalReasonCode::RuntimeError, message)
+    }
+
+    pub fn from_chat_service_error(error: &crate::ChatServiceError) -> Self {
+        match error.code {
+            crate::PROVIDER_AUTHENTICATION_FAILED => Self::new(
+                TurnTerminalReasonCode::ProviderAuthenticationFailed,
+                error.message.clone(),
+            ),
+            _ => Self::upstream_error(error.message.clone()),
+        }
     }
 
     pub fn code(&self) -> TurnTerminalReasonCode {

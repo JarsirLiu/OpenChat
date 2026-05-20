@@ -13,14 +13,14 @@ mod stream;
 mod tools;
 mod turn;
 mod turn_control;
-mod turn_terminal;
 mod turn_plan;
+mod turn_terminal;
 
 pub use context::{
     build_session_context, normalize_session_history, session_history_window_size,
     OutboundContentPart, OutboundMessage, OutboundToolCall, SessionContext,
 };
-pub use error::ChatServiceError;
+pub use error::{ChatServiceError, PROVIDER_API_KEY_REQUIRED, PROVIDER_AUTHENTICATION_FAILED};
 pub use execution::OpenChatTurnExecutor;
 pub use execution_runtime::{TurnExecution, TurnExecutionFuture};
 pub use media::{
@@ -44,5 +44,5 @@ pub use tools::{
 };
 pub use turn::{TurnAccepted, TurnContext};
 pub use turn_control::{ActiveTurnHandle, ActiveTurnRegistry};
-pub use turn_terminal::{TurnTerminalReason, TurnTerminalReasonCode};
 pub use turn_plan::{TurnAttachment, TurnModelRef, TurnPlan, TurnToolRef};
+pub use turn_terminal::{TurnTerminalReason, TurnTerminalReasonCode};

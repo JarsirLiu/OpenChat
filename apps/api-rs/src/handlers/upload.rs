@@ -1,19 +1,19 @@
-use axum::{
-    extract::{Multipart, State},
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
 use crate::{
     http::{
         errors::{
-            chat_service_error_response, ErrorResponseDto, UNSUPPORTED_UPLOAD_TYPE,
+            chat_service_error_response_from_error, ErrorResponseDto, UNSUPPORTED_UPLOAD_TYPE,
             UPLOAD_PAYLOAD_INVALID,
         },
         upload::UploadedImageDto,
     },
     security::extractors::CurrentUser,
     state::AppState,
+};
+use axum::{
+    extract::{Multipart, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
 };
 
 const SUPPORTED_IMAGE_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/webp"];
@@ -88,9 +88,7 @@ pub async fn upload_images(
             .await
         {
             Ok(stored) => stored,
-            Err(error) => {
-                return chat_service_error_response(error.status_code, error.message)
-            }
+            Err(error) => return chat_service_error_response_from_error(error),
         };
 
         uploaded.push(UploadedImageDto {

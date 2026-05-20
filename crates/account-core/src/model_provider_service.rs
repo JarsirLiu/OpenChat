@@ -8,9 +8,7 @@ use openchat_infra::stores::{
     PersistedUserProviderApiKey, UpdateUserProviderApiKey, UserProviderApiKeyStore,
 };
 
-use crate::{
-    SystemProviderRegistry, UpsertUserProviderApiKey, UserProviderApiKey,
-};
+use crate::{SystemProviderRegistry, UpsertUserProviderApiKey, UserProviderApiKey};
 
 #[derive(Clone)]
 pub struct ModelProviderService {
@@ -129,7 +127,9 @@ impl ModelProviderService {
             .await?
         {
             ProviderCredentialsState::Ready { base_url, api_key } => Ok((base_url, api_key)),
-            ProviderCredentialsState::Denied { reason } => Err(ChatServiceError::new(400, reason)),
+            ProviderCredentialsState::Denied { reason } => {
+                Err(ChatServiceError::provider_api_key_required(reason))
+            }
         }
     }
 
@@ -173,10 +173,7 @@ impl ModelProviderService {
                 });
             }
 
-            return Ok(ProviderCredentialsState::Ready {
-                base_url,
-                api_key,
-            });
+            return Ok(ProviderCredentialsState::Ready { base_url, api_key });
         }
 
         Ok(ProviderCredentialsState::Denied {
@@ -209,4 +206,3 @@ fn validate_provider_key(provider_key: &str) -> Result<(), ChatServiceError> {
 fn internal_error(error: anyhow::Error) -> ChatServiceError {
     ChatServiceError::new(500, error.to_string())
 }
-

@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use futures_util::StreamExt;
-use openchat_infra::stores::{PersistedMessage, PersistedToolCall, ChatStore};
+use openchat_infra::stores::{ChatStore, PersistedMessage, PersistedToolCall};
 use serde_json::{json, Value};
 use tokio::time::{timeout, Duration};
 
@@ -15,15 +15,14 @@ use crate::{
             build_tool_call_item, build_tool_call_started_event, build_turn,
             build_turn_started_event, image_part, send_event, text_part,
         },
-        lifecycle::{emit_session_updated, finalize_turn, TurnTerminalState},
         helpers::now_string,
+        lifecycle::{emit_session_updated, finalize_turn, TurnTerminalState},
         session_title::SessionTitleGenerator,
     },
     model_provider_runtime::ModelProviderRuntime,
     model_runtime::ModelStreamEvent,
-    ActiveTurnHandle,
-    ImageModelAccessResolver, MediaAsset, ModelEventStream, OutboundContentPart, OutboundMessage,
-    OutboundToolCall, SessionRuntime, TextModelAccessResolver, ToolAccessResolver,
+    ActiveTurnHandle, ImageModelAccessResolver, MediaAsset, ModelEventStream, OutboundContentPart,
+    OutboundMessage, OutboundToolCall, SessionRuntime, TextModelAccessResolver, ToolAccessResolver,
     ToolExecutionResult, ToolExecutor, ToolInvocation, TurnExecution, TurnExecutionFuture,
     TurnPlan, TurnRunner, TurnTerminalReason,
 };
@@ -249,7 +248,7 @@ where
                                 &chat_store,
                                 &session_runtime,
                                 &active_turn,
-                                TurnTerminalReason::upstream_error(error.message),
+                                TurnTerminalReason::from_chat_service_error(&error),
                             )
                             .await;
                             return;
@@ -534,12 +533,12 @@ where
 
                         pass_state.completed_tool_calls.push(completed_tool_call);
 
-                            let _ = upsert_message(
-                                &chat_store,
-                                PersistedMessage {
-                                    id: assistant_item_id.clone(),
-                                    user_id: plan.user_id.clone(),
-                                    session_id: plan.session_id.clone(),
+                        let _ = upsert_message(
+                            &chat_store,
+                            PersistedMessage {
+                                id: assistant_item_id.clone(),
+                                user_id: plan.user_id.clone(),
+                                session_id: plan.session_id.clone(),
                                 turn_id: active_turn.turn_id().to_string(),
                                 role: "assistant".into(),
                                 status: "in_progress".into(),
@@ -557,7 +556,7 @@ where
                             &chat_store,
                             &session_runtime,
                             &active_turn,
-                            TurnTerminalReason::upstream_error(error.message),
+                            TurnTerminalReason::from_chat_service_error(&error),
                         )
                         .await;
                         return;
@@ -666,7 +665,8 @@ where
                 turn_id: active_turn.turn_id().to_string(),
                 role: "assistant".into(),
                 status: "completed".into(),
-                content_json: build_assistant_content_json(assistant_accumulator.as_str()).to_string(),
+                content_json: build_assistant_content_json(assistant_accumulator.as_str())
+                    .to_string(),
                 tool_call_id: None,
             },
         )
@@ -772,10 +772,7 @@ async fn interrupt_turn(
     .await;
 }
 
-async fn upsert_message(
-    chat_store: &ChatStore,
-    message: PersistedMessage,
-) -> anyhow::Result<()> {
+async fn upsert_message(chat_store: &ChatStore, message: PersistedMessage) -> anyhow::Result<()> {
     chat_store.upsert_message(message).await
 }
 
@@ -1097,4 +1094,3 @@ mod tests {
         assert!(!text.contains("https://example.com/generated.png"));
     }
 }
-

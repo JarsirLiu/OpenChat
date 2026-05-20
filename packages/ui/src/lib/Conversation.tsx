@@ -87,12 +87,13 @@ export function Conversation({ state, requestPending = false }: ConversationProp
     )
   }
 
-  const timeoutMessage = isTimeoutErrorCode(state.error?.code) ? state.error?.message : null
+  const errorMessage = state.error?.message ?? null
+  const showTimeoutStyle = isTimeoutErrorCode(state.error?.code)
 
   return (
     <div className="flex flex-col space-y-6 p-4 w-full">
       {items}
-      {timeoutMessage ? (
+      {errorMessage ? (
         <article className="group flex w-full">
           <div className="flex-shrink-0 mr-3">
             <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -105,10 +106,18 @@ export function Conversation({ state, requestPending = false }: ConversationProp
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="mb-1 flex items-center gap-2">
-              <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-200">OpenChat</span>
+              <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-200">
+                OpenChat
+              </span>
             </div>
-            <div className="max-w-[min(720px,100%)] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[14px] leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
-              {timeoutMessage}
+            <div
+              className={
+                showTimeoutStyle
+                  ? 'max-w-[min(720px,100%)] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[14px] leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100'
+                  : 'max-w-[min(720px,100%)] rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] leading-6 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100'
+              }
+            >
+              {errorMessage}
             </div>
           </div>
         </article>
@@ -129,7 +138,9 @@ export function Conversation({ state, requestPending = false }: ConversationProp
           </div>
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-200">OpenChat</span>
+              <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-200">
+                OpenChat
+              </span>
             </div>
             <div className="mt-2">
               <ContentLoading label="正在发送请求" startedAt={undefined} />

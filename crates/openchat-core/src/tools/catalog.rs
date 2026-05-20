@@ -12,7 +12,4 @@ pub struct CatalogTool {
 }
 
 impl CatalogTool {
-    pub fn demo_catalog() -> Vec<Self> {
-        Vec::new()
-    }
 }

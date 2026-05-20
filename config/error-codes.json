@@ -60,6 +60,11 @@
       "category": "configuration",
       "retryable": false
     },
+    "providerAuthenticationFailed": {
+      "code": "provider_authentication_failed",
+      "category": "configuration",
+      "retryable": false
+    },
     "modelUnavailable": {
       "code": "model_unavailable",
       "category": "configuration",

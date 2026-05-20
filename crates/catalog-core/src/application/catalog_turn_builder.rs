@@ -1,6 +1,6 @@
 use openchat_core::{
-    ChatRequest, ChatServiceError, SessionContext, TurnAttachment, TurnBuilder,
-    TurnModelRef, TurnPlan, TurnToolRef,
+    ChatRequest, ChatServiceError, SessionContext, TurnAttachment, TurnBuilder, TurnModelRef,
+    TurnPlan, TurnToolRef,
 };
 
 use crate::application::catalog::CatalogService;
@@ -24,8 +24,7 @@ impl TurnBuilder for CatalogTurnBuilder {
     ) -> Result<TurnPlan, ChatServiceError> {
         let prompt = request.prompt.trim().to_string();
         if prompt.is_empty() && request.attachments.is_empty() {
-            return Err(ChatServiceError::new(
-                400,
+            return Err(ChatServiceError::validation(
                 "A user prompt or image attachment is required",
             ));
         }
@@ -33,13 +32,15 @@ impl TurnBuilder for CatalogTurnBuilder {
         let selected_text_model = request
             .text_model
             .as_ref()
-            .ok_or_else(|| ChatServiceError::new(400, "A text model must be selected"))?;
+            .ok_or_else(|| ChatServiceError::validation("A text model must be selected"))?;
 
         let text_model = self
             .catalog_service
             .resolve_text_model(selected_text_model.model_config_id.as_str())
             .or_else(|| resolve_custom_text_model(selected_text_model))
-            .ok_or_else(|| ChatServiceError::new(400, "Selected text model is not available"))?;
+            .ok_or_else(|| {
+                ChatServiceError::model_unavailable("Selected text model is not available")
+            })?;
 
         let tool_list = request
             .tool_list
@@ -49,7 +50,9 @@ impl TurnBuilder for CatalogTurnBuilder {
                     .resolve_image_tool(tool.model_config_id.as_str(), tool.id.as_str())
                     .or_else(|| resolve_custom_image_tool(tool))
                     .ok_or_else(|| {
-                        ChatServiceError::new(400, "Selected image tool model is not available")
+                        ChatServiceError::model_unavailable(
+                            "Selected image tool model is not available",
+                        )
                     })
             })
             .collect::<Result<Vec<_>, _>>()?;

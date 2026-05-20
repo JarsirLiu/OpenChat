@@ -114,8 +114,7 @@ impl AccountService {
                 .resolve_user_model_credentials(user_id, model.model_config_id.as_str())
                 .await?
             else {
-                return Err(ChatServiceError::new(
-                    400,
+                return Err(ChatServiceError::model_unavailable(
                     "Selected custom model is not available",
                 ));
             };
@@ -147,8 +146,7 @@ impl AccountService {
                 .resolve_user_model_credentials(user_id, tool.model_config_id.as_str())
                 .await?
             else {
-                return Err(ChatServiceError::new(
-                    400,
+                return Err(ChatServiceError::model_unavailable(
                     "Selected custom image model is not available",
                 ));
             };

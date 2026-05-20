@@ -7,8 +7,8 @@ use axum::{
 
 use crate::{
     http::errors::{
-        chat_service_error_response, error_response, AUTHORIZATION_DENIED, SESSION_NOT_FOUND,
-        VALIDATION_ERROR,
+        chat_service_error_response_from_error, error_response, AUTHORIZATION_DENIED,
+        SESSION_NOT_FOUND, VALIDATION_ERROR,
     },
     http::sessions::{
         RenameSessionDto, SessionDetailDto, SessionHistoryPageDto, SessionHistoryQueryDto,
@@ -18,7 +18,9 @@ use crate::{
     state::AppState,
 };
 
-fn session_access_denied_response(error: openchat_security_core::AuthorizationError) -> axum::response::Response {
+fn session_access_denied_response(
+    error: openchat_security_core::AuthorizationError,
+) -> axum::response::Response {
     if error.message == "Session not found" {
         return error_response(StatusCode::NOT_FOUND, SESSION_NOT_FOUND, error.message);
     }
@@ -44,7 +46,7 @@ pub async fn list_sessions(
                 .collect::<Vec<_>>();
             (StatusCode::OK, Json(sessions)).into_response()
         }
-        Err(error) => chat_service_error_response(error.status_code, error.message),
+        Err(error) => chat_service_error_response_from_error(error),
     }
 }
 
@@ -56,7 +58,11 @@ pub async fn get_session(
 ) -> impl IntoResponse {
     if let Err(error) = state
         .resource_access
-        .authorize_session(&auth, openchat_security_core::Action::Read, session_id.as_str())
+        .authorize_session(
+            &auth,
+            openchat_security_core::Action::Read,
+            session_id.as_str(),
+        )
         .await
     {
         return session_access_denied_response(error);
@@ -68,7 +74,7 @@ pub async fn get_session(
         .await
     {
         Ok(item) => item,
-        Err(error) => return chat_service_error_response(error.status_code, error.message),
+        Err(error) => return chat_service_error_response_from_error(error),
     };
 
     let Some(session) = session else {
@@ -133,7 +139,7 @@ pub async fn get_session(
             }),
         )
             .into_response(),
-        Err(error) => chat_service_error_response(error.status_code, error.message),
+        Err(error) => chat_service_error_response_from_error(error),
     }
 }
 
@@ -144,7 +150,11 @@ pub async fn delete_session(
 ) -> impl IntoResponse {
     if let Err(error) = state
         .resource_access
-        .authorize_session(&auth, openchat_security_core::Action::Delete, session_id.as_str())
+        .authorize_session(
+            &auth,
+            openchat_security_core::Action::Delete,
+            session_id.as_str(),
+        )
         .await
     {
         return session_access_denied_response(error);
@@ -161,7 +171,7 @@ pub async fn delete_session(
             SESSION_NOT_FOUND,
             "Session not found",
         ),
-        Err(error) => chat_service_error_response(error.status_code, error.message),
+        Err(error) => chat_service_error_response_from_error(error),
     }
 }
 
@@ -173,7 +183,11 @@ pub async fn rename_session(
 ) -> impl IntoResponse {
     if let Err(error) = state
         .resource_access
-        .authorize_session(&auth, openchat_security_core::Action::Update, session_id.as_str())
+        .authorize_session(
+            &auth,
+            openchat_security_core::Action::Update,
+            session_id.as_str(),
+        )
         .await
     {
         return session_access_denied_response(error);
@@ -209,6 +223,6 @@ pub async fn rename_session(
             SESSION_NOT_FOUND,
             "Session not found",
         ),
-        Err(error) => chat_service_error_response(error.status_code, error.message),
+        Err(error) => chat_service_error_response_from_error(error),
     }
 }

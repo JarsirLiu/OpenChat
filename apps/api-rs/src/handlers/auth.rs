@@ -1,18 +1,13 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum_extra::extract::cookie::CookieJar;
 use openchat_account_core::{
     AuthError, AuthUser, CreateUserCustomModelDto, LoginRequestDto, RegisterRequestDto,
     UpsertUserProviderApiKeyDto, UserCustomModelDto, UserInfoDto, UserProviderApiKeyDto,
 };
-use axum_extra::extract::cookie::CookieJar;
 
 use crate::{
     http::errors::{
-        chat_service_error_response, error_response, ErrorResponseDto,
+        chat_service_error_response_from_error, error_response, ErrorResponseDto,
         AUTHENTICATION_REQUIRED, CUSTOM_MODEL_NOT_FOUND,
     },
     security::csrf,
@@ -86,10 +81,7 @@ pub async fn me(CurrentUser(auth): CurrentUser) -> impl IntoResponse {
     (StatusCode::OK, Json(UserInfoDto::from(user))).into_response()
 }
 
-pub async fn refresh(
-    State(state): State<AppState>,
-    jar: CookieJar,
-) -> impl IntoResponse {
+pub async fn refresh(State(state): State<AppState>, jar: CookieJar) -> impl IntoResponse {
     let Some(refresh_token) = jar
         .get(state.auth_cookies.refresh_cookie_name())
         .map(|cookie| cookie.value().to_string())
@@ -106,10 +98,7 @@ pub async fn refresh(
     }
 }
 
-pub async fn logout(
-    State(state): State<AppState>,
-    jar: CookieJar,
-) -> impl IntoResponse {
+pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoResponse {
     if let Some(refresh_token) = jar
         .get(state.auth_cookies.refresh_cookie_name())
         .map(|cookie| cookie.value().to_string())
@@ -145,7 +134,7 @@ pub async fn list_user_provider_api_keys(
                 .collect::<Vec<_>>(),
         )
         .into_response(),
-        Err(error) => chat_service_error_response(error.status_code, error.message),
+        Err(error) => chat_service_error_response_from_error(error),
     }
 }
 
@@ -160,7 +149,7 @@ pub async fn upsert_user_provider_api_key(
         .await
     {
         Ok(setting) => Json(UserProviderApiKeyDto::from(setting)).into_response(),
-        Err(error) => chat_service_error_response(error.status_code, error.message),
+        Err(error) => chat_service_error_response_from_error(error),
     }
 }
 
@@ -180,7 +169,7 @@ pub async fn list_user_custom_models(
                 .collect::<Vec<_>>(),
         )
         .into_response(),
-        Err(error) => chat_service_error_response(error.status_code, error.message),
+        Err(error) => chat_service_error_response_from_error(error),
     }
 }
 
@@ -195,7 +184,7 @@ pub async fn create_user_custom_model(
         .await
     {
         Ok(item) => (StatusCode::CREATED, Json(UserCustomModelDto::from(item))).into_response(),
-        Err(error) => chat_service_error_response(error.status_code, error.message),
+        Err(error) => chat_service_error_response_from_error(error),
     }
 }
 
@@ -215,7 +204,7 @@ pub async fn delete_user_custom_model(
             CUSTOM_MODEL_NOT_FOUND,
             "Custom model not found",
         ),
-        Err(error) => chat_service_error_response(error.status_code, error.message),
+        Err(error) => chat_service_error_response_from_error(error),
     }
 }
 
