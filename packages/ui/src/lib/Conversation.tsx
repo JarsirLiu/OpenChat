@@ -27,6 +27,17 @@ const getMessageKey = (message: ChatMessage) => {
 const isTimeoutErrorCode = (code: TurnTerminalReasonCode | null | undefined) =>
   code === 'model_connect_timeout' || code === 'model_stream_idle_timeout'
 
+const formatConversationErrorMessage = (
+  code: TurnTerminalReasonCode | null | undefined,
+  message: string | null | undefined,
+) => {
+  if (code === 'provider_authentication_failed') {
+    return '您的 API Key 无效，请检查是否使用了正确的配置。'
+  }
+
+  return message ?? null
+}
+
 export function Conversation({ state, requestPending = false }: ConversationProps) {
   const lastMessagesLength = useRef(state.messages.length)
   const [hasResponse, setHasResponse] = useState(false)
@@ -87,7 +98,7 @@ export function Conversation({ state, requestPending = false }: ConversationProp
     )
   }
 
-  const errorMessage = state.error?.message ?? null
+  const errorMessage = formatConversationErrorMessage(state.error?.code, state.error?.message)
   const showTimeoutStyle = isTimeoutErrorCode(state.error?.code)
 
   return (

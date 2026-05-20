@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, Check, CheckCircle2, ChevronDown, LoaderCircle, Plus, Trash2, X } from 'lucide-react'
+import {
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Eye,
+  EyeOff,
+  LoaderCircle,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react'
 import clsx from 'clsx'
 import { AuthError, authenticatedFetch } from '../../../lib/auth'
 import { createApiError, ensureOk, toApiError } from '../../../lib/apiError'
@@ -62,6 +73,8 @@ export function ProviderSettingsDialog({
   const [deletingModelId, setDeletingModelId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
   const [modelTypeMenuOpen, setModelTypeMenuOpen] = useState(false)
+  const [providerApiKeyVisible, setProviderApiKeyVisible] = useState(false)
+  const [customModelApiKeyVisible, setCustomModelApiKeyVisible] = useState(false)
   const modelTypePanelRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -188,7 +201,7 @@ export function ProviderSettingsDialog({
       const payload = (await response.json()) as UserProviderApiKey
       setForm((current) => ({
         ...current,
-        apiKey: '',
+        apiKey: current.apiKey.trim(),
         hasStoredApiKey: payload.has_api_key,
       }))
       setFeedback({
@@ -381,13 +394,27 @@ export function ProviderSettingsDialog({
                           保存 API Key 后即可使用模型。
                         </div>
                       ) : null}
-                      <input
-                        type="password"
-                        value={form.apiKey}
-                        onChange={(event) => updateForm({ apiKey: event.target.value })}
-                        placeholder="请输入你购买的 API Key"
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
-                      />
+                      <div className="relative">
+                        <input
+                          type={providerApiKeyVisible ? 'text' : 'password'}
+                          value={form.apiKey}
+                          onChange={(event) => updateForm({ apiKey: event.target.value })}
+                          placeholder="请输入你购买的 API Key"
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 pr-11 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setProviderApiKeyVisible((visible) => !visible)}
+                          className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-gray-400 transition hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                          aria-label={providerApiKeyVisible ? '隐藏 API Key' : '显示 API Key'}
+                        >
+                          {providerApiKeyVisible ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
                     </label>
 
                     <div className="flex items-center justify-end">
@@ -494,13 +521,29 @@ export function ProviderSettingsDialog({
                           <div className="mb-2 text-[13px] font-medium text-gray-700 dark:text-gray-300">
                             API Key
                           </div>
-                          <input
-                            type="password"
-                            value={draft.apiKey}
-                            onChange={(event) => updateDraft({ apiKey: event.target.value })}
-                            placeholder="请输入这个自定义模型专属的 API Key"
-                            className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
-                          />
+                          <div className="relative">
+                            <input
+                              type={customModelApiKeyVisible ? 'text' : 'password'}
+                              value={draft.apiKey}
+                              onChange={(event) => updateDraft({ apiKey: event.target.value })}
+                              placeholder="请输入这个自定义模型专属的 API Key"
+                              className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 pr-11 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setCustomModelApiKeyVisible((visible) => !visible)}
+                              className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-gray-400 transition hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                              aria-label={
+                                customModelApiKeyVisible ? '隐藏 API Key' : '显示 API Key'
+                              }
+                            >
+                              {customModelApiKeyVisible ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
                         </label>
 
                         <button
