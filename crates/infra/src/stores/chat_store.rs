@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use serde_json::Value;
+use sqlx::QueryBuilder;
 use crate::db::DatabasePool;
 
 fn now_millis_i64() -> i64 {
@@ -85,6 +86,12 @@ pub struct PersistedSessionMessage {
     pub updated_at: String,
     pub content: Value,
     pub tool_call_id: Option<String>,
+}
+
+pub struct PersistedTurnPage {
+    pub turn_ids: Vec<String>,
+    pub has_more: bool,
+    pub next_before_turn_id: Option<String>,
 }
 
 impl ChatStore {
@@ -1032,6 +1039,233 @@ impl ChatStore {
             .collect())
     }
 
+    pub async fn list_session_turns_page(
+        &self,
+        user_id: &str,
+        session_id: &str,
+        before_turn_id: Option<&str>,
+        turn_limit: usize,
+    ) -> anyhow::Result<PersistedTurnPage> {
+        let fetch_limit = i64::try_from(turn_limit.saturating_add(1)).unwrap_or(i64::MAX);
+
+        let rows: Vec<(String, i64)> = match self.pool.as_ref() {
+            DatabasePool::Compat(pool) => {
+                sqlx::query_as::<_, (String, i64)>(
+                    r#"
+                    SELECT id, started_at
+                    FROM turns
+                    WHERE session_id = ?1
+                      AND user_id = ?2
+                      AND (
+                        ?3 IS NULL OR (
+                          started_at < COALESCE(
+                            (SELECT started_at FROM turns WHERE id = ?3 AND session_id = ?1 AND user_id = ?2),
+                            9223372036854775807
+                          )
+                          OR (
+                            started_at = COALESCE(
+                              (SELECT started_at FROM turns WHERE id = ?3 AND session_id = ?1 AND user_id = ?2),
+                              9223372036854775807
+                            )
+                            AND id < ?3
+                          )
+                        )
+                      )
+                    ORDER BY started_at DESC, id DESC
+                    LIMIT ?4
+                    "#,
+                )
+                .bind(session_id)
+                .bind(user_id)
+                .bind(before_turn_id)
+                .bind(fetch_limit)
+                .fetch_all(pool)
+                .await
+            }
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_as::<_, (String, i64)>(
+                    r#"
+                    SELECT id, started_at
+                    FROM turns
+                    WHERE session_id = $1
+                      AND user_id = $2
+                      AND (
+                        $3::TEXT IS NULL OR (
+                          started_at < COALESCE(
+                            (SELECT started_at FROM turns WHERE id = $3 AND session_id = $1 AND user_id = $2),
+                            9223372036854775807
+                          )
+                          OR (
+                            started_at = COALESCE(
+                              (SELECT started_at FROM turns WHERE id = $3 AND session_id = $1 AND user_id = $2),
+                              9223372036854775807
+                            )
+                            AND id < $3
+                          )
+                        )
+                      )
+                    ORDER BY started_at DESC, id DESC
+                    LIMIT $4
+                    "#,
+                )
+                .bind(session_id)
+                .bind(user_id)
+                .bind(before_turn_id)
+                .bind(fetch_limit)
+                .fetch_all(pool)
+                .await
+            }
+        }
+        .context("failed to list session turns page")?;
+
+        let has_more = rows.len() > turn_limit;
+        let mut kept_rows = rows;
+        if has_more {
+            kept_rows.truncate(turn_limit);
+        }
+
+        let next_before_turn_id = kept_rows.last().map(|(id, _)| id.clone());
+        let turn_ids = kept_rows
+            .into_iter()
+            .rev()
+            .map(|(id, _)| id)
+            .collect::<Vec<_>>();
+
+        Ok(PersistedTurnPage {
+            turn_ids,
+            has_more,
+            next_before_turn_id,
+        })
+    }
+
+    pub async fn list_session_messages_for_turns(
+        &self,
+        user_id: &str,
+        session_id: &str,
+        turn_ids: &[String],
+    ) -> anyhow::Result<Vec<PersistedSessionMessage>> {
+        self.reconcile_session_items(user_id, session_id).await?;
+
+        if turn_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let turn_order = turn_ids
+            .iter()
+            .enumerate()
+            .map(|(index, turn_id)| (turn_id.clone(), index))
+            .collect::<std::collections::HashMap<_, _>>();
+
+        let rows = match self.pool.as_ref() {
+            DatabasePool::Compat(pool) => {
+                let mut query = QueryBuilder::<sqlx::Postgres>::new(
+                    "SELECT id, user_id, session_id, turn_id, role, status, created_at, updated_at, content_json, tool_call_id FROM messages WHERE user_id = ",
+                );
+                query.push_bind(user_id);
+                query.push(" AND session_id = ");
+                query.push_bind(session_id);
+                query.push(" AND turn_id IN (");
+                {
+                    let mut separated = query.separated(", ");
+                    for turn_id in turn_ids {
+                        separated.push_bind(turn_id);
+                    }
+                }
+                query.push(")");
+                query
+                    .build_query_as::<(
+                        String,
+                        String,
+                        String,
+                        String,
+                        String,
+                        String,
+                        i64,
+                        i64,
+                        String,
+                        Option<String>,
+                    )>()
+                    .fetch_all(pool)
+                    .await
+            }
+            DatabasePool::Postgres(pool) => {
+                let mut query = QueryBuilder::<sqlx::Postgres>::new(
+                    "SELECT id, user_id, session_id, turn_id, role, status, created_at, updated_at, content_json, tool_call_id FROM messages WHERE user_id = ",
+                );
+                query.push_bind(user_id);
+                query.push(" AND session_id = ");
+                query.push_bind(session_id);
+                query.push(" AND turn_id IN (");
+                {
+                    let mut separated = query.separated(", ");
+                    for turn_id in turn_ids {
+                        separated.push_bind(turn_id);
+                    }
+                }
+                query.push(")");
+                query
+                    .build_query_as::<(
+                        String,
+                        String,
+                        String,
+                        String,
+                        String,
+                        String,
+                        i64,
+                        i64,
+                        String,
+                        Option<String>,
+                    )>()
+                    .fetch_all(pool)
+                    .await
+            }
+        }
+        .context("failed to list session messages for turns")?;
+
+        let mut messages = rows
+            .into_iter()
+            .map(
+                |(
+                    id,
+                    _user_id,
+                    session_id,
+                    turn_id,
+                    role,
+                    status,
+                    created_at,
+                    updated_at,
+                    content_json,
+                    tool_call_id,
+                )| {
+                    let content = serde_json::from_str::<Value>(&content_json)
+                        .unwrap_or_else(|_| Value::Array(Vec::new()));
+                    PersistedSessionMessage {
+                        id,
+                        session_id,
+                        turn_id,
+                        role,
+                        status,
+                        created_at: created_at.to_string(),
+                        updated_at: updated_at.to_string(),
+                        content,
+                        tool_call_id,
+                    }
+                },
+            )
+            .collect::<Vec<_>>();
+
+        messages.sort_by(|left, right| {
+            let left_order = turn_order.get(&left.turn_id).copied().unwrap_or(usize::MAX);
+            let right_order = turn_order.get(&right.turn_id).copied().unwrap_or(usize::MAX);
+            left_order
+                .cmp(&right_order)
+                .then_with(|| left.created_at.cmp(&right.created_at))
+                .then_with(|| left.id.cmp(&right.id))
+        });
+
+        Ok(messages)
+    }
+
     pub async fn list_session_tool_calls(
         &self,
         user_id: &str,
@@ -1095,6 +1329,124 @@ impl ChatStore {
                 },
             )
             .collect())
+    }
+
+    pub async fn list_session_tool_calls_for_turns(
+        &self,
+        user_id: &str,
+        session_id: &str,
+        turn_ids: &[String],
+    ) -> anyhow::Result<Vec<PersistedSessionToolCall>> {
+        if turn_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let turn_order = turn_ids
+            .iter()
+            .enumerate()
+            .map(|(index, turn_id)| (turn_id.clone(), index))
+            .collect::<std::collections::HashMap<_, _>>();
+
+        let rows = match self.pool.as_ref() {
+            DatabasePool::Compat(pool) => {
+                let mut query = QueryBuilder::<sqlx::Postgres>::new(
+                    "SELECT id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json FROM tool_calls WHERE user_id = ",
+                );
+                query.push_bind(user_id);
+                query.push(" AND session_id = ");
+                query.push_bind(session_id);
+                query.push(" AND turn_id IN (");
+                {
+                    let mut separated = query.separated(", ");
+                    for turn_id in turn_ids {
+                        separated.push_bind(turn_id);
+                    }
+                }
+                query.push(")");
+                query
+                    .build_query_as::<(
+                        String,
+                        String,
+                        Option<String>,
+                        String,
+                        Option<String>,
+                        Option<String>,
+                        Option<String>,
+                        String,
+                        Option<String>,
+                    )>()
+                    .fetch_all(pool)
+                    .await
+            }
+            DatabasePool::Postgres(pool) => {
+                let mut query = QueryBuilder::<sqlx::Postgres>::new(
+                    "SELECT id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json FROM tool_calls WHERE user_id = ",
+                );
+                query.push_bind(user_id);
+                query.push(" AND session_id = ");
+                query.push_bind(session_id);
+                query.push(" AND turn_id IN (");
+                {
+                    let mut separated = query.separated(", ");
+                    for turn_id in turn_ids {
+                        separated.push_bind(turn_id);
+                    }
+                }
+                query.push(")");
+                query
+                    .build_query_as::<(
+                        String,
+                        String,
+                        Option<String>,
+                        String,
+                        Option<String>,
+                        Option<String>,
+                        Option<String>,
+                        String,
+                        Option<String>,
+                    )>()
+                    .fetch_all(pool)
+                    .await
+            }
+        }
+        .context("failed to list session tool calls for turns")?;
+
+        let mut tool_calls = rows
+            .into_iter()
+            .map(
+                |(
+                    id,
+                    turn_id,
+                    parent_item_id,
+                    tool_name,
+                    tool_display_name,
+                    arguments_text,
+                    result_json,
+                    status,
+                    media_json,
+                )| PersistedSessionToolCall {
+                    id,
+                    turn_id,
+                    parent_item_id,
+                    tool_name,
+                    tool_display_name,
+                    arguments_text,
+                    result_json,
+                    status,
+                    media_json,
+                },
+            )
+            .collect::<Vec<_>>();
+
+        tool_calls.sort_by(|left, right| {
+            let left_order = turn_order.get(&left.turn_id).copied().unwrap_or(usize::MAX);
+            let right_order = turn_order.get(&right.turn_id).copied().unwrap_or(usize::MAX);
+            left_order
+                .cmp(&right_order)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+
+        Ok(tool_calls)
     }
 }
 

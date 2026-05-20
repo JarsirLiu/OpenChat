@@ -6,7 +6,7 @@ use tokio::sync::broadcast;
 use crate::{
     build_session_context,
     events::{MessageSnapshotDto, ToolCallSummaryDto},
-    normalize_session_history, parse_media_assets_json, ChatRequest, ChatServiceError,
+    normalize_session_history, parse_media_assets_json, session_history_window_size, ChatRequest, ChatServiceError,
     ActiveTurnRegistry, InMemorySessionStore, SessionContext, SessionRuntime, StreamEventPayload,
     TurnAccepted, TurnPlan,
 };
@@ -17,6 +17,12 @@ pub trait TurnBuilder: Send + Sync {
         request: ChatRequest,
         context: SessionContext,
     ) -> Result<TurnPlan, ChatServiceError>;
+}
+
+pub struct SessionMessagesSnapshotPage {
+    pub messages: Vec<MessageSnapshotDto>,
+    pub has_more: bool,
+    pub next_before_turn_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -177,25 +183,45 @@ impl ChatService {
         &self,
         user_id: &str,
         session_id: &str,
-    ) -> Result<Vec<MessageSnapshotDto>, ChatServiceError> {
+        before_turn_id: Option<&str>,
+    ) -> Result<SessionMessagesSnapshotPage, ChatServiceError> {
         if self.get_session(user_id, session_id).await?.is_none() {
             return Err(ChatServiceError::new(404, "Session not found".to_string()));
         }
 
         self.reconcile_session_runtime_state(user_id, session_id).await?;
 
+        let turn_page = self
+            .chat_store
+            .list_session_turns_page(
+                user_id,
+                session_id,
+                before_turn_id,
+                session_history_window_size(),
+            )
+            .await
+            .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
         let messages = self
             .chat_store
-            .list_session_messages(user_id, session_id)
+            .list_session_messages_for_turns(
+                user_id,
+                session_id,
+                turn_page.turn_ids.as_slice(),
+            )
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
         let tool_calls = self
             .chat_store
-            .list_session_tool_calls(user_id, session_id)
+            .list_session_tool_calls_for_turns(
+                user_id,
+                session_id,
+                turn_page.turn_ids.as_slice(),
+            )
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
 
-        Ok(messages
+        Ok(SessionMessagesSnapshotPage {
+            messages: messages
             .into_iter()
             .map(|message| {
                 let attached_tool_calls = if message.role == "assistant" {
@@ -246,7 +272,10 @@ impl ChatService {
                     tool_calls: attached_tool_calls,
                 }
             })
-            .collect())
+            .collect(),
+            has_more: turn_page.has_more,
+            next_before_turn_id: turn_page.next_before_turn_id,
+        })
     }
 
     async fn load_session_history(

@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { fetchEventSource } from '@microsoft/fetch-event-source'
 import type { ChatMessage, ChatStreamEvent, ItemStatus, MessageContentPart } from '@openchat/protocol'
 import { normalizeStreamEvent } from '@openchat/protocol'
@@ -9,6 +9,7 @@ interface UseChatStreamParams {
   sessionId: string
   enabled: boolean
   onHydrate: (messages: ChatMessage[]) => void
+  onPrependHydrate: (messages: ChatMessage[]) => void
   onHydrateSession: (session: SessionListItem | null) => void
   onEvent: (event: ChatStreamEvent) => void
 }
@@ -31,9 +32,13 @@ interface SessionDetailResponse {
     content?: unknown
     toolCalls?: unknown
   }>
+  historyPage?: {
+    hasMore?: boolean
+    nextBeforeTurnId?: string | null
+  }
 }
 
-const normalizeSessionMessages = (value: SessionDetailResponse['messages']): ChatMessage[] =>
+export const normalizeSessionMessages = (value: SessionDetailResponse['messages']): ChatMessage[] =>
   Array.isArray(value)
     ? (() => {
         const messages: ChatMessage[] = []
@@ -189,25 +194,65 @@ export function useChatStream({
   sessionId,
   enabled,
   onHydrate,
+  onPrependHydrate,
   onHydrateSession,
   onEvent,
 }: UseChatStreamParams) {
   const [streamState, setStreamState] = useState<'connecting' | 'connected' | 'disconnected'>(
     'connecting',
   )
+  const [historyHasMore, setHistoryHasMore] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const nextBeforeTurnIdRef = useRef<string | null>(null)
   const handleEvent = useEffectEvent((event: ChatStreamEvent) => {
     onEvent(event)
   })
   const handleHydrateMessages = useEffectEvent((messages: ChatMessage[]) => {
     onHydrate(messages)
   })
+  const handlePrependHydrateMessages = useEffectEvent((messages: ChatMessage[]) => {
+    onPrependHydrate(messages)
+  })
   const handleHydrateSession = useEffectEvent((session: SessionListItem | null) => {
     onHydrateSession(session)
   })
 
+  const loadOlderHistory = async () => {
+    if (!enabled || historyLoading || !historyHasMore || !nextBeforeTurnIdRef.current) {
+      return false
+    }
+
+    setHistoryLoading(true)
+
+    try {
+      const response = await authenticatedFetch(
+        `/api/sessions/${sessionId}?before_turn_id=${encodeURIComponent(nextBeforeTurnIdRef.current)}`,
+      )
+      if (!response.ok) {
+        return false
+      }
+
+      const payload = (await response.json()) as SessionDetailResponse
+      nextBeforeTurnIdRef.current =
+        typeof payload.historyPage?.nextBeforeTurnId === 'string'
+          ? payload.historyPage.nextBeforeTurnId
+          : null
+      setHistoryHasMore(Boolean(payload.historyPage?.hasMore))
+      handlePrependHydrateMessages(normalizeSessionMessages(payload.messages))
+      return true
+    } catch {
+      return false
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (!enabled) {
       setStreamState('disconnected')
+      setHistoryHasMore(false)
+      setHistoryLoading(false)
+      nextBeforeTurnIdRef.current = null
       return
     }
 
@@ -231,6 +276,11 @@ export function useChatStream({
 
         handleHydrateSession(normalizeSession(payload.session))
         handleHydrateMessages(normalizeSessionMessages(payload.messages))
+        nextBeforeTurnIdRef.current =
+          typeof payload.historyPage?.nextBeforeTurnId === 'string'
+            ? payload.historyPage.nextBeforeTurnId
+            : null
+        setHistoryHasMore(Boolean(payload.historyPage?.hasMore))
       } catch {
         // Ignore hydration failures and fall back to live stream events.
       } finally {
@@ -303,6 +353,9 @@ export function useChatStream({
   }, [enabled, sessionId])
 
   return {
+    historyHasMore,
+    historyLoading,
+    loadOlderHistory,
     streamState,
   }
 }

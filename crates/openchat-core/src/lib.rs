@@ -33,7 +33,7 @@ pub use model_provider_runtime::{
 };
 pub use model_runtime::{ModelEventStream, ModelRuntime, ModelStreamEvent};
 pub use request::{ChatRequest, SelectedTextModel, SelectedTool, UploadedAttachment};
-pub use service::{ChatService, TurnBuilder, TurnRunner};
+pub use service::{ChatService, SessionMessagesSnapshotPage, TurnBuilder, TurnRunner};
 pub use session_runtime::{InMemorySessionStore, SessionRuntime};
 pub use stream::StreamEventPayload;
 pub use tools::{

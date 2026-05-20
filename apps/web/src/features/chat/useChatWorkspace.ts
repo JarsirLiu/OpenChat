@@ -27,6 +27,7 @@ import type { UploadedImageAttachment } from './types'
 
 type RuntimeAction =
   | { type: 'hydrate'; messages: ChatMessage[] }
+  | { type: 'prepend'; messages: ChatMessage[] }
   | { type: 'stream'; event: ChatStreamEvent }
   | { type: 'reset' }
 
@@ -37,6 +38,14 @@ const runtimeReducer = (
   switch (action.type) {
     case 'hydrate':
       return hydrateChatRuntimeState(action.messages)
+    case 'prepend': {
+      const existingIds = new Set(state.messages.map((message) => message.id))
+      const nextMessages = [
+        ...action.messages.filter((message) => !existingIds.has(message.id)),
+        ...state.messages,
+      ]
+      return hydrateChatRuntimeState(nextMessages)
+    }
     case 'stream':
       return applyStreamEvent(state, action.event)
     case 'reset':
@@ -129,6 +138,9 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
   const handleHydrate = useCallback((messages: ChatMessage[]) => {
     dispatch({ type: 'hydrate', messages })
   }, [])
+  const handlePrependHydrate = useCallback((messages: ChatMessage[]) => {
+    dispatch({ type: 'prepend', messages })
+  }, [])
 
   const handleHydrateSession = useCallback(
     (session: (typeof sessions)[number] | null) => {
@@ -153,10 +165,11 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
     dispatch({ type: 'stream', event })
   }, [upsertSession])
 
-  useChatStream({
+  const { historyHasMore, historyLoading, loadOlderHistory } = useChatStream({
     sessionId,
     enabled: Boolean(currentSession),
     onHydrate: handleHydrate,
+    onPrependHydrate: handlePrependHydrate,
     onHydrateSession: handleHydrateSession,
     onEvent: handleStreamEvent,
   })
@@ -395,6 +408,9 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
     requestPending,
     requestError,
     runtimeState,
+    historyHasMore,
+    historyLoading,
+    loadOlderHistory,
     attachments,
     selectedImageTool,
     selectedImageToolKey,

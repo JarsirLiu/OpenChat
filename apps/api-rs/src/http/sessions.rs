@@ -43,9 +43,22 @@ pub struct SessionToolCallSummaryDto {
 pub struct SessionDetailDto {
     pub session: SessionListItemDto,
     pub messages: Vec<SessionMessageDto>,
+    pub history_page: SessionHistoryPageDto,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionHistoryPageDto {
+    pub has_more: bool,
+    pub next_before_turn_id: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
 pub struct RenameSessionDto {
     pub title: String,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct SessionHistoryQueryDto {
+    pub before_turn_id: Option<String>,
 }

@@ -52,6 +52,9 @@ export function ChatWorkspace({
     pending,
     requestPending,
     requestError,
+    historyHasMore,
+    historyLoading,
+    loadOlderHistory,
     attachments,
     removeAttachment,
     runtimeState,
@@ -82,6 +85,41 @@ export function ChatWorkspace({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [runtimeState.messages, pending])
+
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) {
+      return
+    }
+
+    let loading = false
+
+    const handleScroll = () => {
+      if (loading || historyLoading || !historyHasMore || container.scrollTop > 80) {
+        return
+      }
+
+      loading = true
+      const previousScrollHeight = container.scrollHeight
+      const previousScrollTop = container.scrollTop
+
+      void loadOlderHistory().then((loaded) => {
+        requestAnimationFrame(() => {
+          if (loaded) {
+            const nextScrollHeight = container.scrollHeight
+            container.scrollTop =
+              previousScrollTop + (nextScrollHeight - previousScrollHeight)
+          }
+          loading = false
+        })
+      })
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+    }
+  }, [historyHasMore, historyLoading, loadOlderHistory])
 
   useEffect(() => {
     if (shouldPromptProviderSettings(requestError) || shouldPromptProviderSettings(catalogError)) {

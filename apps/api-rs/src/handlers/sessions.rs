@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -7,8 +7,8 @@ use axum::{
 
 use crate::{
     http::sessions::{
-        RenameSessionDto, SessionDetailDto, SessionListItemDto, SessionMessageDto,
-        SessionToolCallSummaryDto,
+        RenameSessionDto, SessionDetailDto, SessionHistoryPageDto, SessionHistoryQueryDto,
+        SessionListItemDto, SessionMessageDto, SessionToolCallSummaryDto,
     },
     security::extractors::CurrentUser,
     state::AppState,
@@ -54,6 +54,7 @@ pub async fn get_session(
     State(state): State<AppState>,
     CurrentUser(auth): CurrentUser,
     Path(session_id): Path<String>,
+    Query(query): Query<SessionHistoryQueryDto>,
 ) -> impl IntoResponse {
     if let Err(error) = state
         .resource_access
@@ -89,10 +90,14 @@ pub async fn get_session(
 
     match state
         .chat_service
-        .session_messages_snapshot(auth.user_id(), session_id.as_str())
+        .session_messages_snapshot(
+            auth.user_id(),
+            session_id.as_str(),
+            query.before_turn_id.as_deref(),
+        )
         .await
     {
-        Ok(messages) => (
+        Ok(snapshot) => (
             StatusCode::OK,
             Json(SessionDetailDto {
                 session: SessionListItemDto {
@@ -102,7 +107,8 @@ pub async fn get_session(
                     created_at: session.created_at,
                     updated_at: session.updated_at,
                 },
-                messages: messages
+                messages: snapshot
+                    .messages
                     .into_iter()
                     .map(|message| SessionMessageDto {
                         id: message.id,
@@ -129,6 +135,10 @@ pub async fn get_session(
                             .collect(),
                     })
                     .collect(),
+                history_page: SessionHistoryPageDto {
+                    has_more: snapshot.has_more,
+                    next_before_turn_id: snapshot.next_before_turn_id,
+                },
             }),
         )
             .into_response(),
