@@ -67,6 +67,10 @@
   margin: 0 0 1em;
 }
 
+.lc-markdown p:last-child {
+  margin-bottom: 0;
+}
+
 .lc-markdown ul {
   list-style-type: disc;
   padding-left: 1.5em;
@@ -81,6 +85,24 @@
 
 .lc-markdown li {
   margin: 0.25em 0;
+}
+
+.lc-markdown li > ul,
+.lc-markdown li > ol {
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+}
+
+.lc-markdown ul.contains-task-list,
+.lc-markdown ol.contains-task-list {
+  padding-left: 0;
+  list-style: none;
+}
+
+.lc-markdown li.task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55em;
 }
 
 .lc-markdown h1,
@@ -111,6 +133,21 @@
   color: #4b5563;
 }
 
+.lc-markdown hr {
+  margin: 1.25em 0;
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.lc-markdown strong {
+  font-weight: 600;
+  color: #111827;
+}
+
+.lc-markdown em {
+  font-style: italic;
+}
+
 .lc-markdown code {
   padding: 0.15em 0.35em;
   border-radius: 0.35rem;
@@ -120,12 +157,13 @@
 }
 
 .lc-markdown pre {
-  margin: 0 0 0.75em;
+  margin: 0;
   padding: 12px 14px;
   overflow: auto;
-  border-radius: 16px;
-  background: #0f172a;
+  border-radius: 0 0 16px 16px;
+  background: #111827;
   color: #e2e8f0;
+  line-height: 1.6;
 }
 
 .lc-markdown pre code {
@@ -133,12 +171,93 @@
   background: transparent;
   color: inherit;
   white-space: pre;
+  word-break: normal;
 }
 
 .lc-markdown a {
   color: #2563eb;
   text-decoration: underline;
   text-underline-offset: 0.15em;
+}
+
+.lc-markdown-code-block {
+  margin: 0 0 1em;
+  overflow: hidden;
+  border: 1px solid #1f2937;
+  border-radius: 16px;
+  background: #111827;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.lc-markdown-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0b1220;
+}
+
+.lc-markdown-code-language {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+.lc-markdown-table-wrap {
+  width: 100%;
+  margin: 0 0 1em;
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+}
+
+.lc-markdown table {
+  width: 100%;
+  min-width: 420px;
+  border-collapse: collapse;
+  background: #ffffff;
+  font-size: 0.95em;
+}
+
+.lc-markdown thead {
+  background: #f8fafc;
+}
+
+.lc-markdown thead tr {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.lc-markdown tbody tr {
+  border-bottom: 1px solid #eef2f7;
+}
+
+.lc-markdown tbody tr:last-child {
+  border-bottom: 0;
+}
+
+.lc-markdown tbody tr:nth-child(even) {
+  background: #fcfcfd;
+}
+
+.lc-markdown th,
+.lc-markdown td {
+  padding: 0.7em 0.9em;
+  text-align: left;
+  vertical-align: top;
+}
+
+.lc-markdown th {
+  color: #111827;
+  font-weight: 600;
+}
+
+.lc-markdown-checkbox {
+  margin: 0.18em 0 0;
+  accent-color: #2563eb;
 }
 
 .lc-markdown-lite {
