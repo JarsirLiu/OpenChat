@@ -10,12 +10,12 @@ This directory contains:
 
 ```bash
 cd docker
-cp .env.example .env
+cp .env.prod .env
 docker compose pull app nginx
 docker compose up -d
 ```
 
-Set `OPENCHAT_APP_IMAGE` and `OPENCHAT_NGINX_IMAGE` in `docker/.env` when using your own registry images.
+`docker/.env` must define `OPENCHAT_APP_IMAGE` and `OPENCHAT_NGINX_IMAGE` for registry-based deploys. The production template in `docker/.env.prod` includes the Tencent registry values by default.
 
 ## Full Stack With Local Build
 

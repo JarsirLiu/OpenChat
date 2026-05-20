@@ -1,4 +1,6 @@
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { LoginView } from './features/auth/components/LoginView'
+import { RequireAuth, RequireGuest } from './features/auth/components/AuthRouteGuards'
 import { useAuthSession } from './features/auth/useAuthSession'
 import { ChatWorkspace } from './features/chat/components/ChatWorkspace'
 
@@ -22,22 +24,49 @@ export function App() {
     )
   }
 
-  if (!currentUser) {
-    return (
-      <LoginView
-        loading={authSubmitting}
-        error={authError}
-        onLogin={handleLogin}
-        onRegister={handleRegister}
-      />
-    )
-  }
-
   return (
-    <ChatWorkspace
-      currentUser={currentUser}
-      onLogout={handleLogout}
-      onUnauthorized={handleUnauthorized}
-    />
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          <RequireGuest currentUser={currentUser}>
+            <LoginView
+              mode="login"
+              loading={authSubmitting}
+              error={authError}
+              onLogin={handleLogin}
+              onRegister={handleRegister}
+            />
+          </RequireGuest>
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <RequireGuest currentUser={currentUser}>
+            <LoginView
+              mode="register"
+              loading={authSubmitting}
+              error={authError}
+              onLogin={handleLogin}
+              onRegister={handleRegister}
+            />
+          </RequireGuest>
+        }
+      />
+      <Route
+        path="/"
+        element={
+          <RequireAuth currentUser={currentUser}>
+            <ChatWorkspace
+              currentUser={currentUser!}
+              onLogout={handleLogout}
+              onUnauthorized={handleUnauthorized}
+            />
+          </RequireAuth>
+        }
+      />
+      <Route path="*" element={<Navigate to={currentUser ? '/' : '/login'} replace />} />
+    </Routes>
   )
 }

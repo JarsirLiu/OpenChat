@@ -1,14 +1,17 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
+
+type AuthMode = 'login' | 'register'
 
 interface LoginViewProps {
+  mode: AuthMode
   loading: boolean
   error: string | null
   onLogin: (account: string, password: string) => Promise<void>
   onRegister: (email: string, password: string, username?: string) => Promise<void>
 }
 
-export function LoginView({ loading, error, onLogin, onRegister }: LoginViewProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+export function LoginView({ mode, loading, error, onLogin, onRegister }: LoginViewProps) {
   const [account, setAccount] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -31,24 +34,22 @@ export function LoginView({ loading, error, onLogin, onRegister }: LoginViewProp
         </p>
 
         <div className="mt-6 grid grid-cols-2 gap-1.5 rounded-2xl bg-gray-100 p-1.5">
-          <button
-            type="button"
-            className={`h-10 rounded-xl text-sm ${
+          <Link
+            to="/login"
+            className={`flex h-10 items-center justify-center rounded-xl text-sm ${
               !isRegister ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
             }`}
-            onClick={() => setMode('login')}
           >
             登录
-          </button>
-          <button
-            type="button"
-            className={`h-10 rounded-xl text-sm ${
+          </Link>
+          <Link
+            to="/register"
+            className={`flex h-10 items-center justify-center rounded-xl text-sm ${
               isRegister ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
             }`}
-            onClick={() => setMode('register')}
           >
             注册
-          </button>
+          </Link>
         </div>
 
         <form
