@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::{OutboundContentPart, TurnAttachment};
+use crate::{MediaAsset, OutboundContentPart, OutboundToolResult, TurnAttachment};
 
 pub fn assistant_text_to_content_json(text: &str) -> Value {
     let mut parts = Vec::new();
@@ -69,6 +69,29 @@ pub fn value_to_outbound_content_parts(value: Value) -> Vec<OutboundContentPart>
                         .and_then(Value::as_str)
                         .map(str::to_string),
                 }),
+                "tool_result" => Some(OutboundContentPart::ToolResult(OutboundToolResult {
+                    tool_call_id: part.get("toolCallId")?.as_str()?.to_string(),
+                    tool_name: part.get("toolName")?.as_str()?.to_string(),
+                    tool_display_name: part
+                        .get("toolDisplayName")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    status: part
+                        .get("status")
+                        .and_then(Value::as_str)
+                        .unwrap_or("completed")
+                        .to_string(),
+                    arguments_text: part
+                        .get("argumentsText")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    result: part.get("result").cloned().unwrap_or_else(|| serde_json::json!({})),
+                    media: part
+                        .get("media")
+                        .and_then(Value::as_array)
+                        .map(|items| items.iter().filter_map(parse_media_asset).collect::<Vec<_>>())
+                        .unwrap_or_default(),
+                })),
                 _ => None,
             }
         })
@@ -87,6 +110,23 @@ pub fn append_image_media_parts(parts: &mut Vec<OutboundContentPart>, media: &[c
     }
 }
 
+pub fn tool_result_to_content_json(result: &OutboundToolResult) -> Value {
+    serde_json::json!([{
+        "type": "tool_result",
+        "toolCallId": result.tool_call_id,
+        "toolName": result.tool_name,
+        "toolDisplayName": result.tool_display_name,
+        "status": result.status,
+        "argumentsText": result.arguments_text,
+        "result": result.result,
+        "media": result.media,
+    }])
+}
+
+fn parse_media_asset(value: &Value) -> Option<MediaAsset> {
+    serde_json::from_value::<MediaAsset>(value.clone()).ok()
+}
+
 fn text_part(text: &str) -> Value {
     serde_json::json!({
         "type": "text",
@@ -101,4 +141,45 @@ fn image_part(url: String, alt: &str, media_id: Option<String>) -> Value {
         "alt": alt,
         "media_id": media_id,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{tool_result_to_content_json, value_to_outbound_content_parts};
+    use crate::{MediaAsset, OutboundContentPart, OutboundToolResult};
+    use serde_json::json;
+
+    #[test]
+    fn tool_result_content_round_trips_as_a_structured_part() {
+        let tool_result = OutboundToolResult {
+            tool_call_id: "call_1".into(),
+            tool_name: "image_generation".into(),
+            tool_display_name: Some("Image Generation".into()),
+            status: "completed".into(),
+            arguments_text: Some("{\"prompt\":\"cat\"}".into()),
+            result: json!({
+                "kind": "tool_result",
+                "output": { "count": 1 }
+            }),
+            media: vec![MediaAsset {
+                kind: "image".into(),
+                url: "https://example.com/image.png".into(),
+                object_key: Some("media/object-1.png".into()),
+                mime_type: "image/png".into(),
+                size_bytes: 123,
+            }],
+        };
+
+        let content = tool_result_to_content_json(&tool_result);
+        let parts = value_to_outbound_content_parts(content);
+
+        assert_eq!(parts.len(), 1);
+        assert!(matches!(
+            &parts[0],
+            OutboundContentPart::ToolResult(parsed)
+                if parsed.tool_call_id == "call_1"
+                    && parsed.tool_name == "image_generation"
+                    && parsed.media.len() == 1
+        ));
+    }
 }

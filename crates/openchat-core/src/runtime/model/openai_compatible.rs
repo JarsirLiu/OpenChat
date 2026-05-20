@@ -7,6 +7,7 @@ use std::sync::Arc;
 use super::{sse::SseDataSource, ModelEventStream, ModelStreamEvent};
 use crate::{
     ChatServiceError, ModelMediaUrlResolver, OutboundContentPart, OutboundMessage,
+    format_outbound_tool_result_text,
     ResolvedTextModelAccess, ToolSpec, TurnPlan,
 };
 
@@ -334,6 +335,31 @@ async fn build_openai_message_content(
                         },
                     });
                 }
+                OutboundContentPart::ToolResult(tool_result) => {
+                    let summary_text = format_outbound_tool_result_text(tool_result);
+                    if !summary_text.trim().is_empty() {
+                        parts.push(OpenAiContentPart::Text { text: summary_text });
+                    }
+
+                    for media in tool_result.media.iter().filter(|asset| asset.kind == "image") {
+                        if media.url.trim().is_empty() {
+                            continue;
+                        }
+                        has_image_part = true;
+                        let resolved_url = match media.object_key.as_deref() {
+                            Some(media_id) => {
+                                media_url_resolver.resolve_model_url(media_id, media.url.as_str()).await
+                            }
+                            None => media.url.clone(),
+                        };
+                        parts.push(OpenAiContentPart::ImageUrl {
+                            image_url: OpenAiImageUrl {
+                                url: resolved_url,
+                                detail: Some("auto".to_string()),
+                            },
+                        });
+                    }
+                }
                 _ => {}
             }
         }
@@ -417,6 +443,9 @@ fn flatten_text_content(message: &OutboundMessage) -> String {
             OutboundContentPart::Text { text } => parts.push(text.clone()),
             OutboundContentPart::ImageUrl { .. } => {
                 parts.push(text_only_image_placeholder().to_string())
+            }
+            OutboundContentPart::ToolResult(tool_result) => {
+                parts.push(format_outbound_tool_result_text(tool_result));
             }
         }
     }

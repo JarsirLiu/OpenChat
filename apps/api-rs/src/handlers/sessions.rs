@@ -125,9 +125,8 @@ pub async fn get_session(
                                 display_name: tool_call.display_name,
                                 parent_item_id: tool_call.parent_item_id,
                                 arguments_text: tool_call.arguments_text,
-                                result: tool_call.result,
                                 status: tool_call.status.unwrap_or_else(|| "completed".to_string()),
-                                media: tool_call.media.unwrap_or_default(),
+                                content: tool_call.content,
                             })
                             .collect(),
                     })

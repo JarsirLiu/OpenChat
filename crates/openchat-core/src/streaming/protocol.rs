@@ -58,8 +58,7 @@ pub struct ToolCallItemDto {
     pub tool_name: String,
     pub tool_display_name: Option<String>,
     pub arguments_text: Option<String>,
-    pub result: Option<Value>,
-    pub media: Option<Vec<MediaAsset>>,
+    pub content: Value,
 }
 
 #[derive(Clone, Serialize)]
@@ -70,9 +69,8 @@ pub struct ToolCallSummaryDto {
     pub display_name: Option<String>,
     pub parent_item_id: Option<String>,
     pub arguments_text: Option<String>,
-    pub result: Option<Value>,
     pub status: Option<String>,
-    pub media: Option<Vec<MediaAsset>>,
+    pub content: Value,
 }
 
 #[derive(Clone, Serialize)]

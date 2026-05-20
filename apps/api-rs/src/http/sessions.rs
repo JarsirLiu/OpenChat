@@ -1,4 +1,3 @@
-use openchat_core::MediaAsset;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -33,9 +32,8 @@ pub struct SessionToolCallSummaryDto {
     pub display_name: Option<String>,
     pub parent_item_id: Option<String>,
     pub arguments_text: Option<String>,
-    pub result: Option<Value>,
     pub status: String,
-    pub media: Vec<MediaAsset>,
+    pub content: Value,
 }
 
 #[derive(Clone, Serialize)]

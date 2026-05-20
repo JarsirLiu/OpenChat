@@ -181,6 +181,12 @@ where
         invocation: ToolInvocation,
     ) -> Result<ToolExecutionResult, ChatServiceError> {
         let request = parse_image_generation_request(invocation.arguments_text.as_str())?;
+        if !request.input_images.is_empty() {
+            return Err(ChatServiceError::new(
+                501,
+                "Reference-image generation is not implemented yet for this image runtime",
+            ));
+        }
         let generated_images = self
             .runtime
             .generate_image(invocation.user_id.as_str(), &invocation.tool, &request)
@@ -240,6 +246,7 @@ pub(crate) struct ImageGenerationRequest {
     count: u32,
     quality: Option<String>,
     background: Option<String>,
+    input_images: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -250,6 +257,8 @@ struct ImageGenerationArguments {
     quality: Option<String>,
     background: Option<String>,
     count: Option<u32>,
+    #[serde(default, alias = "image")]
+    input_images: Option<Vec<String>>,
 }
 
 fn parse_image_generation_request(raw: &str) -> Result<ImageGenerationRequest, ChatServiceError> {
@@ -274,6 +283,7 @@ fn parse_image_generation_request(raw: &str) -> Result<ImageGenerationRequest, C
         count: args.count.unwrap_or(1).clamp(1, 4),
         quality: args.quality.filter(|value| !value.trim().is_empty()),
         background: args.background.filter(|value| !value.trim().is_empty()),
+        input_images: args.input_images.unwrap_or_default(),
     })
 }
 

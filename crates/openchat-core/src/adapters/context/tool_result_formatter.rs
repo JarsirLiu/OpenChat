@@ -1,7 +1,21 @@
 use openchat_infra::stores::PersistedSessionToolCall;
 use serde_json::Value;
 
-use crate::{parse_media_assets_json, MediaAsset};
+use crate::{parse_media_assets_json, MediaAsset, OutboundToolResult};
+
+pub fn format_outbound_tool_result_text(tool_result: &OutboundToolResult) -> String {
+    format_tool_result_text(
+        tool_result
+            .tool_display_name
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(tool_result.tool_name.as_str()),
+        tool_result.status.as_str(),
+        tool_result.arguments_text.as_deref(),
+        Some(&tool_result.result),
+        tool_result.media.as_slice(),
+    )
+}
 
 pub fn format_tool_result_text(
     display_name: &str,

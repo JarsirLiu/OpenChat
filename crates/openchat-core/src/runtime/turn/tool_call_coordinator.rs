@@ -2,6 +2,7 @@ use openchat_infra::stores::{ChatStore, PersistedToolCall};
 use serde_json::json;
 
 use crate::{
+    tool_result_to_content_json, OutboundToolResult,
     runtime::turn::{
         event_builder::{build_tool_call_completed_event, build_tool_call_item, send_event},
         helpers::now_string,
@@ -153,8 +154,19 @@ where
                     completed.tool_name.clone(),
                     Some(completed.tool_display_name.clone()),
                     Some(completed.arguments_text.clone()),
-                    Some(completed.result.clone()),
-                    (!completed.media.is_empty()).then_some(completed.media.clone()),
+                    tool_result_to_content_json(&OutboundToolResult {
+                        tool_call_id: completed.tool_call_id.clone(),
+                        tool_name: completed.tool_name.clone(),
+                        tool_display_name: Some(completed.tool_display_name.clone()),
+                        status: if completed.failed {
+                            "failed".into()
+                        } else {
+                            "completed".into()
+                        },
+                        arguments_text: Some(completed.arguments_text.clone()),
+                        result: completed.result.clone(),
+                        media: completed.media.clone(),
+                    }),
                 ),
             ),
         );

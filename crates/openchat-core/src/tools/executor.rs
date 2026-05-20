@@ -7,10 +7,13 @@ use std::sync::Arc;
 
 use super::{
     context::{ToolExecutionResult, ToolInvocation},
+    definition::ToolHandlerKind,
     image_generation::ImageGenerationToolHandler,
+    registry::ToolRegistry,
 };
 
 pub struct ToolExecutor<R> {
+    registry: ToolRegistry,
     access_service: ToolAccessService<R>,
     image_generation: ImageGenerationToolHandler<R>,
 }
@@ -18,6 +21,7 @@ pub struct ToolExecutor<R> {
 impl<R> Clone for ToolExecutor<R> {
     fn clone(&self) -> Self {
         Self {
+            registry: self.registry.clone(),
             access_service: self.access_service.clone(),
             image_generation: self.image_generation.clone(),
         }
@@ -34,6 +38,7 @@ where
         media_store: Arc<dyn crate::MediaStore>,
     ) -> Self {
         Self {
+            registry: ToolRegistry::default(),
             access_service,
             image_generation: ImageGenerationToolHandler::new(image_runtime, media_store),
         }
@@ -47,12 +52,8 @@ where
             .authorize_turn_tool(invocation.user_id.as_str(), &invocation.tool)
             .await?;
 
-        match invocation.tool.tool_type.as_str() {
-            "image" => self.image_generation.execute(invocation).await,
-            other => Err(ChatServiceError::new(
-                501,
-                format!("Tool type `{other}` is not implemented yet"),
-            )),
+        match self.registry.handler_kind_for_turn_tool(&invocation.tool)? {
+            ToolHandlerKind::ImageGeneration => self.image_generation.execute(invocation).await,
         }
     }
 }

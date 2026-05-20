@@ -1,5 +1,5 @@
 import type { ToolCallViewModel } from '@openchat/chat-core'
-import type { ToolCallSummary } from '@openchat/protocol'
+import type { MessageContentPart, ToolCallSummary } from '@openchat/protocol'
 import { useMemo, useState } from 'react'
 import { ImageGen } from './tool-output/ImageGen'
 import { ToolIcon, getToolIconType } from './tool-output/ToolIcon'
@@ -13,12 +13,16 @@ interface ToolCallItemProps {
   liveState?: ToolCallViewModel
 }
 
+const getToolResultPart = (content: MessageContentPart[]) =>
+  content.find((part): part is Extract<MessageContentPart, { type: 'tool_result' }> => part.type === 'tool_result')
+
 export function ToolCallItem({ toolCall, liveState }: ToolCallItemProps) {
   const [isExpanded, setIsExpanded] = useState(liveState?.status === 'in_progress')
   const iconType = useMemo(() => getToolIconType(toolCall.name), [toolCall.name])
   const isImageTool = imageToolNames.has(toolCall.name)
   const status = liveState?.status ?? 'queued'
   const label = toolCall.displayName ?? toolCall.name
+  const toolResult = getToolResultPart(toolCall.content)
 
   const toggle = () => setIsExpanded((value) => !value)
 
@@ -28,7 +32,7 @@ export function ToolCallItem({ toolCall, liveState }: ToolCallItemProps) {
         toolName={label}
         argumentsText={liveState?.argumentsText ?? ''}
         resultText={liveState?.resultText ?? ''}
-        media={liveState?.media ?? toolCall.media ?? []}
+        media={liveState?.media ?? toolResult?.media ?? []}
         status={status}
         isExpanded={isExpanded || status === 'in_progress'}
         onToggle={toggle}

@@ -3,6 +3,7 @@ import type {
   ChatStreamEvent,
   ItemStatus,
   MessageContentPart,
+  MessageContentToolResult,
   TurnTerminalReasonCode,
   ToolMedia,
   ToolCallSummary,
@@ -84,7 +85,15 @@ export const hydrateChatRuntimeState = (messages: ChatMessage[]): ChatRuntimeSta
   }
 }
 
-const formatToolResultText = (result: ToolCallSummary['result']): string => {
+const isToolResultPart = (
+  part: MessageContentPart,
+): part is MessageContentToolResult => part.type === 'tool_result'
+
+const getToolResultPart = (
+  content: MessageContentPart[] | undefined,
+): MessageContentToolResult | undefined => content?.find(isToolResultPart)
+
+const formatToolResultText = (result: MessageContentToolResult['result']): string => {
   if (typeof result === 'string') {
     return result
   }
@@ -115,21 +124,15 @@ const buildToolCallStateFromMessages = (
   for (const message of messages) {
     if (message.role === 'assistant' && message.toolCalls?.length) {
       for (const toolCall of message.toolCalls) {
+        const toolResult = getToolResultPart(toolCall.content)
         toolCalls[toolCall.id] = {
           id: toolCall.id,
           name: toolCall.name,
           displayName: toolCall.displayName,
           argumentsText: toolCall.argumentsText ?? '',
-          resultText: formatToolResultText(toolCall.result),
+          resultText: formatToolResultText(toolResult?.result ?? null),
           status: toolCall.status ?? 'completed',
-          media:
-            toolCall.media?.filter(
-              (asset): asset is ToolMedia =>
-                typeof asset.kind === 'string' &&
-                typeof asset.url === 'string' &&
-                typeof asset.mimeType === 'string' &&
-                typeof asset.sizeBytes === 'number',
-            ) ?? [],
+          media: toolResult?.media ?? [],
         }
       }
     }
@@ -426,6 +429,7 @@ export const applyStreamEvent = (
         parentItemId: event.parentItemId,
         argumentsText: event.arguments ? JSON.stringify(event.arguments, null, 2) : '',
         status: 'in_progress',
+        content: [],
       }
 
       return {
@@ -484,7 +488,8 @@ export const applyStreamEvent = (
       }
 
     case 'item.tool_call.completed': {
-      const resultText = formatToolResultText(event.item.result)
+      const toolResult = getToolResultPart(event.item.content)
+      const resultText = formatToolResultText(toolResult?.result ?? null)
       const parentItemId = event.item.parentItemId ?? undefined
 
       return {
@@ -501,16 +506,7 @@ export const applyStreamEvent = (
               event.item.argumentsText ?? state.toolCalls[event.item.toolCallId]?.argumentsText ?? '',
             resultText,
             status: event.item.status,
-            media:
-              event.item.media?.filter(
-                (asset): asset is ToolMedia =>
-                  typeof asset.kind === 'string' &&
-                  typeof asset.url === 'string' &&
-                  typeof asset.mimeType === 'string' &&
-                  typeof asset.sizeBytes === 'number',
-              ) ??
-              state.toolCalls[event.item.toolCallId]?.media ??
-              [],
+            media: toolResult?.media ?? state.toolCalls[event.item.toolCallId]?.media ?? [],
           },
         },
         pendingToolCallsByMessageId: parentItemId
@@ -524,16 +520,8 @@ export const applyStreamEvent = (
                         event.item.argumentsText ??
                         state.toolCalls[event.item.toolCallId]?.argumentsText ??
                         toolCall.argumentsText,
-                      result: event.item.result ?? null,
                       status: event.item.status,
-                      media:
-                        event.item.media?.filter(
-                          (asset): asset is ToolMedia =>
-                            typeof asset.kind === 'string' &&
-                            typeof asset.url === 'string' &&
-                            typeof asset.mimeType === 'string' &&
-                            typeof asset.sizeBytes === 'number',
-                        ) ?? toolCall.media,
+                      content: event.item.content,
                     }
                   : toolCall,
               ),

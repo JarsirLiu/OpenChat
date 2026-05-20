@@ -27,17 +27,24 @@ export type RenderMessagePart =
   | RenderImagePart
   | RenderToolCallGroupPart
 
-const mapContentPart = (part: MessageContentPart): RenderTextPart | RenderImagePart =>
-  part.type === 'text'
-    ? {
-        type: 'text',
-        text: part.text,
-      }
-    : {
-        type: 'image',
-        url: part.url,
-        alt: part.alt,
-      }
+const mapContentPart = (part: MessageContentPart): RenderTextPart | RenderImagePart | null => {
+  if (part.type === 'text') {
+    return {
+      type: 'text',
+      text: part.text,
+    }
+  }
+
+  if (part.type === 'image') {
+    return {
+      type: 'image',
+      url: part.url,
+      alt: part.alt,
+    }
+  }
+
+  return null
+}
 
 export const buildMessageParts = (
   message: ChatMessage,
@@ -49,7 +56,10 @@ export const buildMessageParts = (
     if (message.role === 'assistant' && part.type === 'image') {
       continue
     }
-    parts.push(mapContentPart(part))
+    const mapped = mapContentPart(part)
+    if (mapped) {
+      parts.push(mapped)
+    }
   }
 
   if (message.toolCalls?.length) {

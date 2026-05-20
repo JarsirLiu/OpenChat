@@ -1,3 +1,17 @@
+use crate::MediaAsset;
+use serde_json::Value;
+
+#[derive(Clone)]
+pub struct OutboundToolResult {
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub tool_display_name: Option<String>,
+    pub status: String,
+    pub arguments_text: Option<String>,
+    pub result: Value,
+    pub media: Vec<MediaAsset>,
+}
+
 #[derive(Clone)]
 pub enum OutboundContentPart {
     Text {
@@ -7,6 +21,7 @@ pub enum OutboundContentPart {
         url: String,
         media_id: Option<String>,
     },
+    ToolResult(OutboundToolResult),
 }
 
 #[derive(Clone)]

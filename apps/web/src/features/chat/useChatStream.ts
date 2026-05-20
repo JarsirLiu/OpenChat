@@ -74,22 +74,7 @@ export const normalizeSessionMessages = (value: SessionDetailResponse['messages'
 
           const content = Array.isArray(message.content) ? message.content : []
 
-          const normalizedContent: MessageContentPart[] = content.flatMap((part): MessageContentPart[] => {
-            if (!part || typeof part !== 'object') {
-              return []
-            }
-
-            const item = part as Record<string, unknown>
-            if (item.type === 'text' && typeof item.text === 'string') {
-              return [{ type: 'text', text: item.text }]
-            }
-
-            if (item.type === 'image' && typeof item.url === 'string') {
-              return [{ type: 'image', url: item.url, alt: typeof item.alt === 'string' ? item.alt : 'Image' }]
-            }
-
-            return []
-          })
+          const normalizedContent = normalizeContentParts(content)
 
           const normalizedToolCalls = Array.isArray(message.toolCalls)
             ? message.toolCalls.flatMap((toolCall) => {
@@ -111,12 +96,6 @@ export const normalizeSessionMessages = (value: SessionDetailResponse['messages'
                       typeof item.parentItemId === 'string' ? item.parentItemId : undefined,
                     argumentsText:
                       typeof item.argumentsText === 'string' ? item.argumentsText : undefined,
-                    result:
-                      item.result && typeof item.result === 'object'
-                        ? (item.result as Record<string, unknown>)
-                        : typeof item.result === 'string'
-                          ? item.result
-                          : undefined,
                     status:
                       item.status === 'in_progress' ||
                       item.status === 'interrupted' ||
@@ -124,25 +103,7 @@ export const normalizeSessionMessages = (value: SessionDetailResponse['messages'
                       item.status === 'failed'
                         ? (item.status as ItemStatus)
                         : undefined,
-                    media: Array.isArray(item.media)
-                      ? item.media
-                          .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'))
-                          .flatMap((entry) =>
-                            typeof entry.kind === 'string' &&
-                            typeof entry.url === 'string' &&
-                            typeof entry.mimeType === 'string' &&
-                            typeof entry.sizeBytes === 'number'
-                              ? [
-                                  {
-                                    kind: entry.kind,
-                                    url: entry.url,
-                                    mimeType: entry.mimeType,
-                                    sizeBytes: entry.sizeBytes,
-                                  },
-                                ]
-                              : [],
-                          )
-                      : undefined,
+                    content: normalizeContentParts(item.content),
                   },
                 ]
               })
@@ -164,6 +125,73 @@ export const normalizeSessionMessages = (value: SessionDetailResponse['messages'
 
         return messages
       })()
+    : []
+
+const normalizeToolMedia = (value: unknown) =>
+  Array.isArray(value)
+    ? value
+        .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'))
+        .flatMap((entry) =>
+          typeof entry.kind === 'string' &&
+          typeof entry.url === 'string' &&
+          typeof entry.mimeType === 'string' &&
+          typeof entry.sizeBytes === 'number'
+            ? [
+                {
+                  kind: entry.kind,
+                  url: entry.url,
+                  mimeType: entry.mimeType,
+                  sizeBytes: entry.sizeBytes,
+                },
+              ]
+            : [],
+        )
+    : []
+
+const normalizeContentParts = (value: unknown): MessageContentPart[] =>
+  Array.isArray(value)
+    ? value.flatMap((part): MessageContentPart[] => {
+        if (!part || typeof part !== 'object') {
+          return []
+        }
+
+        const item = part as Record<string, unknown>
+        if (item.type === 'text' && typeof item.text === 'string') {
+          return [{ type: 'text', text: item.text }]
+        }
+
+        if (item.type === 'image' && typeof item.url === 'string') {
+          return [{ type: 'image', url: item.url, alt: typeof item.alt === 'string' ? item.alt : 'Image' }]
+        }
+
+        if (
+          item.type === 'tool_result' &&
+          typeof item.toolCallId === 'string' &&
+          typeof item.toolName === 'string' &&
+          (item.status === 'in_progress' ||
+            item.status === 'interrupted' ||
+            item.status === 'completed' ||
+            item.status === 'failed')
+        ) {
+          return [{
+            type: 'tool_result',
+            toolCallId: item.toolCallId,
+            toolName: item.toolName,
+            toolDisplayName: typeof item.toolDisplayName === 'string' ? item.toolDisplayName : null,
+            status: item.status,
+            argumentsText: typeof item.argumentsText === 'string' ? item.argumentsText : null,
+            result:
+              item.result && typeof item.result === 'object'
+                ? (item.result as Record<string, unknown>)
+                : typeof item.result === 'string'
+                  ? item.result
+                  : null,
+            media: normalizeToolMedia(item.media),
+          }]
+        }
+
+        return []
+      })
     : []
 
 const normalizeSession = (value: SessionDetailResponse['session']): SessionListItem | null => {

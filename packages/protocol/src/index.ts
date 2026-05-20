@@ -47,8 +47,6 @@ export interface MessageContentImage {
   alt: string
 }
 
-export type MessageContentPart = MessageContentText | MessageContentImage
-
 export interface ToolMedia {
   kind: string
   url: string
@@ -56,15 +54,27 @@ export interface ToolMedia {
   sizeBytes: number
 }
 
+export interface MessageContentToolResult {
+  type: 'tool_result'
+  toolCallId: string
+  toolName: string
+  toolDisplayName?: string | null
+  status: ItemStatus
+  argumentsText?: string | null
+  result: Record<string, unknown> | string | null
+  media: ToolMedia[]
+}
+
+export type MessageContentPart = MessageContentText | MessageContentImage | MessageContentToolResult
+
 export interface ToolCallSummary {
   id: string
   name: string
   displayName?: string
   parentItemId?: string
   argumentsText?: string
-  result?: Record<string, unknown> | string | null
   status?: ItemStatus
-  media?: ToolMedia[] | null
+  content: MessageContentPart[]
 }
 
 export interface ChatMessage {
@@ -106,8 +116,7 @@ export interface ToolCallItem {
   toolName: string
   toolDisplayName?: string | null
   argumentsText?: string | null
-  result?: Record<string, unknown> | string | null
-  media?: ToolMedia[] | null
+  content: MessageContentPart[]
 }
 
 export interface BaseEvent {

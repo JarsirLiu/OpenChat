@@ -100,8 +100,7 @@ pub fn build_tool_call_item(
     tool_name: String,
     tool_display_name: Option<String>,
     arguments_text: Option<String>,
-    result: Option<Value>,
-    media: Option<Vec<MediaAsset>>,
+    content: Value,
 ) -> ToolCallItemDto {
     ToolCallItemDto {
         id,
@@ -113,8 +112,7 @@ pub fn build_tool_call_item(
         tool_name,
         tool_display_name,
         arguments_text,
-        result,
-        media,
+        content,
     }
 }
 

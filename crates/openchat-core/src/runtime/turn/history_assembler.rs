@@ -1,6 +1,6 @@
 use crate::{
-    append_image_media_parts, format_tool_result_text, user_content_to_outbound_parts,
-    OutboundContentPart, OutboundMessage, OutboundToolCall, TurnAttachment,
+    user_content_to_outbound_parts, OutboundContentPart, OutboundMessage, OutboundToolCall,
+    OutboundToolResult, TurnAttachment,
 };
 
 use super::loop_step_result::{CompletedToolCall, LoopStepResult};
@@ -66,29 +66,26 @@ impl HistoryAssembler {
     }
 }
 
-fn tool_result_to_history_text(call: &CompletedToolCall) -> String {
-    format_tool_result_text(
-        call.tool_display_name.as_str(),
-        if call.failed { "failed" } else { "completed" },
-        Some(call.arguments_text.as_str()),
-        Some(&call.result),
-        call.media.as_slice(),
-    )
-}
-
 fn tool_result_to_outbound_parts(call: &CompletedToolCall) -> Vec<OutboundContentPart> {
-    let mut parts = vec![OutboundContentPart::Text {
-        text: tool_result_to_history_text(call),
-    }];
-    append_image_media_parts(&mut parts, call.media.as_slice());
-
-    parts
+    vec![OutboundContentPart::ToolResult(OutboundToolResult {
+        tool_call_id: call.tool_call_id.clone(),
+        tool_name: call.tool_name.clone(),
+        tool_display_name: Some(call.tool_display_name.clone()),
+        status: if call.failed {
+            "failed".into()
+        } else {
+            "completed".into()
+        },
+        arguments_text: Some(call.arguments_text.clone()),
+        result: call.result.clone(),
+        media: call.media.clone(),
+    })]
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{tool_result_to_history_text, tool_result_to_outbound_parts, CompletedToolCall};
-    use crate::{MediaAsset, OutboundContentPart};
+    use super::{tool_result_to_outbound_parts, CompletedToolCall};
+    use crate::{MediaAsset, OutboundContentPart, OutboundToolResult};
     use serde_json::json;
 
     fn sample_completed_tool_call(image_urls: &[&str]) -> CompletedToolCall {
@@ -119,31 +116,17 @@ mod tests {
     }
 
     #[test]
-    fn tool_history_parts_include_generated_image_url() {
+    fn tool_history_parts_are_structured() {
         let parts = tool_result_to_outbound_parts(&sample_completed_tool_call(&[
             "https://example.com/generated.png",
             "https://example.com/generated-2.png",
         ]));
 
-        assert_eq!(parts.len(), 3);
-        assert!(matches!(parts[0], OutboundContentPart::Text { .. }));
+        assert_eq!(parts.len(), 1);
         assert!(matches!(
-            &parts[1],
-            OutboundContentPart::ImageUrl { url, .. } if url == "https://example.com/generated.png"
+            &parts[0],
+            OutboundContentPart::ToolResult(OutboundToolResult { tool_call_id, tool_name, .. })
+                if tool_call_id == "call_1" && tool_name == "image_generation"
         ));
-        assert!(matches!(
-            &parts[2],
-            OutboundContentPart::ImageUrl { url, .. } if url == "https://example.com/generated-2.png"
-        ));
-    }
-
-    #[test]
-    fn tool_history_text_keeps_image_reference_out_of_plain_text() {
-        let text = tool_result_to_history_text(&sample_completed_tool_call(&[
-            "https://example.com/generated.png",
-        ]));
-
-        assert!(text.contains("image_attachment: 1 image(s) available"));
-        assert!(!text.contains("https://example.com/generated.png"));
     }
 }

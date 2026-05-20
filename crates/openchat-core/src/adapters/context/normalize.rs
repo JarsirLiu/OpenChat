@@ -1,8 +1,8 @@
 use openchat_infra::stores::{PersistedSessionMessage, PersistedSessionToolCall};
 
 use super::{
-    append_image_media_parts, collect_attached_tool_calls, format_persisted_tool_result_text,
-    types::{OutboundContentPart, OutboundMessage, OutboundToolCall},
+    collect_attached_tool_calls,
+    types::{OutboundContentPart, OutboundMessage, OutboundToolCall, OutboundToolResult},
     value_to_outbound_content_parts,
 };
 
@@ -42,13 +42,19 @@ fn normalize_content_parts(
     let mut parts = value_to_outbound_content_parts(content);
 
     for tool_call in attached_tool_calls {
-        parts.push(OutboundContentPart::Text {
-            text: format_persisted_tool_result_text(&tool_call),
-        });
-        append_image_media_parts(
-            &mut parts,
-            crate::parse_media_assets_json(tool_call.media_json.as_deref()).as_slice(),
-        );
+        parts.push(OutboundContentPart::ToolResult(OutboundToolResult {
+            tool_call_id: tool_call.id.clone(),
+            tool_name: tool_call.tool_name.clone(),
+            tool_display_name: tool_call.tool_display_name.clone(),
+            status: tool_call.status.clone(),
+            arguments_text: tool_call.arguments_text.clone(),
+            result: tool_call
+                .result_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str(raw).ok())
+                .unwrap_or_else(|| serde_json::json!({})),
+            media: crate::parse_media_assets_json(tool_call.media_json.as_deref()),
+        }));
     }
 
     parts
@@ -100,11 +106,15 @@ mod tests {
         let history = normalize_session_history(messages, tool_calls);
 
         assert_eq!(history.len(), 1);
-        assert_eq!(history[0].content.len(), 4);
+        assert_eq!(history[0].content.len(), 2);
+        assert!(matches!(
+            &history[0].content[1],
+            super::OutboundContentPart::ToolResult(_)
+        ));
     }
 
     #[test]
-    fn tool_result_text_does_not_inline_raw_image_url() {
+    fn tool_result_keeps_raw_image_url_out_of_text() {
         let messages = vec![PersistedSessionMessage {
             id: "assistant_1".to_string(),
             session_id: "sess_1".to_string(),
@@ -132,12 +142,12 @@ mod tests {
         }];
 
         let history = normalize_session_history(messages, tool_calls);
-        let text = match &history[0].content[1] {
-            super::OutboundContentPart::Text { text } => text,
+        let tool_result = match &history[0].content[1] {
+            super::OutboundContentPart::ToolResult(tool_result) => tool_result,
             _ => panic!("expected tool result text"),
         };
 
-        assert!(text.contains("image_attachment: 1 image(s) available"));
-        assert!(!text.contains("https://example.com/image.png"));
+        assert_eq!(tool_result.media.len(), 1);
+        assert_eq!(tool_result.media[0].url, "https://example.com/image.png");
     }
 }

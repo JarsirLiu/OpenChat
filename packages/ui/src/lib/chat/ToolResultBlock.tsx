@@ -21,8 +21,9 @@ export function ToolResultBlock({ message }: ToolResultBlockProps) {
               <div key={`${message.id}:${index}`}>
                 <Text text={part.text} isCreatedByUser={false} showCursor={false} />
               </div>
-            ) : (
+            ) : part.type === 'image' ? (
               <Image key={`${message.id}:${index}`} url={part.url} alt={part.alt} />
+            ) : null,
             ),
           )
         )}

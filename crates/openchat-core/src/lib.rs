@@ -9,10 +9,11 @@ pub mod streaming;
 
 pub use adapters::context::{
     append_image_media_parts, assistant_text_to_content_json, build_session_context,
-    collect_attached_tool_calls, format_persisted_tool_result_text, format_tool_result_text,
-    normalize_session_history, sanitize_tool_result_json, session_history_window_size,
-    user_content_to_json, user_content_to_outbound_parts, value_to_outbound_content_parts,
-    OutboundContentPart, OutboundMessage, OutboundToolCall, SessionContext,
+    collect_attached_tool_calls, format_outbound_tool_result_text, format_persisted_tool_result_text,
+    format_tool_result_text, normalize_session_history, sanitize_tool_result_json,
+    session_history_window_size, tool_result_to_content_json, user_content_to_json,
+    user_content_to_outbound_parts, value_to_outbound_content_parts, OutboundContentPart,
+    OutboundMessage, OutboundToolCall, OutboundToolResult, SessionContext,
 };
 pub use application::{
     ActiveTurnRegistryPort, ChatRepository, ChatService, SessionMessagesSnapshotPage,
@@ -36,8 +37,8 @@ pub use runtime::{
 pub use tools::{
     CatalogTool, GeneratedImage, ImageGenerationToolHandler, ImageRuntime, ResolveToolAccessFuture,
     ToolAccessDecision, ToolAccessOutcome, ToolAccessRequirement, ToolAccessResolver,
-    ToolAccessService, ToolCapability, ToolExecutionResult, ToolExecutor, ToolFunctionSpec,
-    ToolInvocation, ToolRegistry, ToolSpec,
+    ToolAccessService, ToolCapability, ToolDefinition, ToolExecutionResult, ToolExecutor,
+    ToolFunctionSpec, ToolHandlerKind, ToolInputMode, ToolInvocation, ToolRegistry, ToolSpec,
 };
 pub use streaming::{InMemorySessionStore, SessionRuntime, StreamEventPayload};
 

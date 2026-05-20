@@ -7,8 +7,8 @@ use crate::{
     build_session_context, collect_attached_tool_calls,
     protocol::{MessageSnapshotDto, ToolCallSummaryDto},
     normalize_session_history, parse_media_assets_json, session_history_window_size,
-    ActiveTurnHandle, ChatRequest, ChatServiceError, SessionContext, SessionRuntime,
-    StreamEventPayload, TurnAccepted, TurnPlan,
+    tool_result_to_content_json, ActiveTurnHandle, ChatRequest, ChatServiceError, OutboundToolResult,
+    SessionContext, SessionRuntime, StreamEventPayload, TurnAccepted, TurnPlan,
 };
 
 use super::ports::{ActiveTurnRegistryPort, ChatRepository, SessionRuntimeRegistry};
@@ -241,7 +241,6 @@ impl ChatService {
                                 let media =
                                     parse_media_assets_json(tool_call.media_json.as_deref());
                                 ToolCallSummaryDto {
-                                    media: (!media.is_empty()).then_some(media),
                                     id: tool_call.id.clone(),
                                     name: tool_call.tool_name.clone(),
                                     display_name: tool_call.tool_display_name.clone(),
@@ -250,11 +249,20 @@ impl ChatService {
                                         .clone()
                                         .or_else(|| Some(message.id.clone())),
                                     arguments_text: tool_call.arguments_text.clone(),
-                                    result: tool_call
-                                        .result_json
-                                        .as_deref()
-                                        .and_then(|value| serde_json::from_str(value).ok()),
                                     status: Some(tool_call.status.clone()),
+                                    content: tool_result_to_content_json(&OutboundToolResult {
+                                        tool_call_id: tool_call.id.clone(),
+                                        tool_name: tool_call.tool_name.clone(),
+                                        tool_display_name: tool_call.tool_display_name.clone(),
+                                        status: tool_call.status.clone(),
+                                        arguments_text: tool_call.arguments_text.clone(),
+                                        result: tool_call
+                                            .result_json
+                                            .as_deref()
+                                            .and_then(|value| serde_json::from_str(value).ok())
+                                            .unwrap_or_else(|| serde_json::json!({})),
+                                        media,
+                                    }),
                                 }
                             })
                             .collect();
