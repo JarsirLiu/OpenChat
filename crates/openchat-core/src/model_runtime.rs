@@ -58,6 +58,12 @@ impl ModelRuntime {
         access: &ResolvedTextModelAccess,
     ) -> Result<ModelEventStream, ChatServiceError> {
         let url = format!("{}/chat/completions", access.base_url.trim_end_matches('/'));
+        let messages = build_openai_messages(
+            plan,
+            &access.input_modalities,
+            self.media_url_resolver.as_ref(),
+        )
+        .await;
 
         let response = self
             .client
@@ -66,11 +72,7 @@ impl ModelRuntime {
             .header(reqwest::header::ACCEPT, "text/event-stream")
             .json(&OpenAiChatRequest {
                 model: access.model_name.clone(),
-                messages: build_openai_messages(
-                    plan,
-                    &access.input_modalities,
-                    self.media_url_resolver.as_ref(),
-                ),
+                messages,
                 tools: build_openai_tools(&plan.tool_list)?,
                 stream: true,
                 enable_thinking: Some(true),
@@ -316,7 +318,7 @@ where
     }
 }
 
-fn build_openai_messages(
+async fn build_openai_messages(
     plan: &TurnPlan,
     input_modalities: &[String],
     media_url_resolver: &dyn ModelMediaUrlResolver,
@@ -355,7 +357,8 @@ fn build_openai_messages(
                     reasoning.as_deref(),
                     supports_image_inputs,
                     media_url_resolver,
-                );
+                )
+                .await;
                 let tool_calls = (!message.tool_calls.is_empty())
                     .then(|| build_openai_tool_call_messages(&message.tool_calls));
 
@@ -376,6 +379,7 @@ fn build_openai_messages(
                         supports_image_inputs,
                         media_url_resolver,
                     )
+                    .await
                 {
                     messages.push(OpenAiMessage {
                         role: if message.role == "tool" {
@@ -400,7 +404,8 @@ fn build_openai_messages(
                 plan.attachments.as_slice(),
                 supports_image_inputs,
                 media_url_resolver,
-            )),
+            )
+            .await),
             tool_calls: None,
             tool_call_id: None,
         });
@@ -428,7 +433,7 @@ fn build_openai_tools(
     registry.specs_for_turn_tools(tool_list).map(Some)
 }
 
-fn build_openai_message_content(
+async fn build_openai_message_content(
     message: &OutboundMessage,
     reasoning: Option<&str>,
     supports_image_inputs: bool,
@@ -451,12 +456,13 @@ fn build_openai_message_content(
                 }
                 OutboundContentPart::ImageUrl { url, media_id } if !url.trim().is_empty() => {
                     has_image_part = true;
+                    let resolved_url = match media_id.as_deref() {
+                        Some(media_id) => media_url_resolver.resolve_model_url(media_id, url).await,
+                        None => url.clone(),
+                    };
                     parts.push(OpenAiContentPart::ImageUrl {
                         image_url: OpenAiImageUrl {
-                            url: media_id
-                                .as_deref()
-                                .map(|media_id| media_url_resolver.resolve_model_url(media_id, url))
-                                .unwrap_or_else(|| url.clone()),
+                            url: resolved_url,
                             detail: Some("auto".to_string()),
                         },
                     });
@@ -498,7 +504,7 @@ fn build_openai_message_content(
     }
 }
 
-fn build_current_user_message_content(
+async fn build_current_user_message_content(
     prompt: &str,
     attachments: &[crate::TurnAttachment],
     supports_image_inputs: bool,
@@ -517,10 +523,9 @@ fn build_current_user_message_content(
             if attachment.mime_type.starts_with("image/") && !attachment.url.trim().is_empty() {
                 parts.push(OpenAiContentPart::ImageUrl {
                     image_url: OpenAiImageUrl {
-                        url: media_url_resolver.resolve_model_url(
-                            attachment.id.as_str(),
-                            attachment.url.as_str(),
-                        ),
+                        url: media_url_resolver
+                            .resolve_model_url(attachment.id.as_str(), attachment.url.as_str())
+                            .await,
                         detail: Some("auto".to_string()),
                     },
                 });
@@ -680,7 +685,23 @@ mod tests {
         build_openai_message_content, build_openai_messages, model_supports_image_inputs,
         OpenAiMessageContent,
     };
-    use crate::{OutboundContentPart, OutboundMessage, OutboundToolCall};
+    use async_trait::async_trait;
+    use crate::{
+        ModelMediaUrlResolver, OutboundContentPart, OutboundMessage, OutboundToolCall, TurnPlan,
+    };
+
+    struct NoopMediaResolver;
+
+    #[async_trait]
+    impl ModelMediaUrlResolver for NoopMediaResolver {
+        async fn resolve_model_url(&self, media_id: &str, fallback_url: &str) -> String {
+            if media_id.trim().is_empty() {
+                fallback_url.to_string()
+            } else {
+                format!("resolved://{media_id}")
+            }
+        }
+    }
 
     #[test]
     fn image_inputs_are_detected_from_modalities() {
@@ -692,8 +713,8 @@ mod tests {
         assert!(!model_supports_image_inputs(&["text".into()]));
     }
 
-    #[test]
-    fn text_only_models_drop_image_parts_from_context() {
+    #[tokio::test]
+    async fn text_only_models_drop_image_parts_from_context() {
         let message = OutboundMessage {
             role: "assistant".into(),
             item_id: "item_1".into(),
@@ -704,13 +725,15 @@ mod tests {
                 },
                 OutboundContentPart::ImageUrl {
                     url: "https://example.com/image.png".into(),
+                    media_id: None,
                 },
             ],
             tool_calls: Vec::new(),
             tool_call_id: None,
         };
 
-        let content = build_openai_message_content(&message, None, false)
+        let content = build_openai_message_content(&message, None, false, &NoopMediaResolver)
+            .await
             .expect("text content should remain available");
 
         match content {
@@ -724,20 +747,22 @@ mod tests {
         }
     }
 
-    #[test]
-    fn multimodal_models_keep_image_parts() {
+    #[tokio::test]
+    async fn multimodal_models_keep_image_parts() {
         let message = OutboundMessage {
             role: "user".into(),
             item_id: "item_1".into(),
             turn_id: "turn_1".into(),
             content: vec![OutboundContentPart::ImageUrl {
                 url: "https://example.com/image.png".into(),
+                media_id: None,
             }],
             tool_calls: Vec::new(),
             tool_call_id: None,
         };
 
-        let content = build_openai_message_content(&message, None, true)
+        let content = build_openai_message_content(&message, None, true, &NoopMediaResolver)
+            .await
             .expect("image content should remain available");
 
         match content {
@@ -752,8 +777,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn assistant_tool_calls_are_kept_without_text_content() {
+    #[tokio::test]
+    async fn assistant_tool_calls_are_kept_without_text_content() {
         let history = vec![OutboundMessage {
             role: "assistant".into(),
             item_id: "item_1".into(),
@@ -786,7 +811,9 @@ mod tests {
                 tool_list: Vec::new(),
             },
             &["text".into()],
-        );
+            &NoopMediaResolver,
+        )
+        .await;
 
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[1].role, "assistant");
@@ -794,8 +821,8 @@ mod tests {
         assert!(messages[1].tool_calls.is_some());
     }
 
-    #[test]
-    fn continuation_round_does_not_append_empty_user_message() {
+    #[tokio::test]
+    async fn continuation_round_does_not_append_empty_user_message() {
         let messages = build_openai_messages(
             &TurnPlan {
                 user_id: "user_1".into(),
@@ -815,7 +842,9 @@ mod tests {
                 tool_list: Vec::new(),
             },
             &["text".into()],
-        );
+            &NoopMediaResolver,
+        )
+        .await;
 
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "system");

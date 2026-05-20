@@ -1,5 +1,6 @@
 use std::{future::Future, pin::Pin};
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::ChatServiceError;
@@ -36,8 +37,9 @@ pub fn parse_media_assets_json(raw: Option<&str>) -> Vec<MediaAsset> {
 pub type PutMediaFuture<'a> =
     Pin<Box<dyn Future<Output = Result<StoredMedia, ChatServiceError>> + Send + 'a>>;
 
+#[async_trait]
 pub trait ModelMediaUrlResolver: Send + Sync {
-    fn resolve_model_url(&self, media_id: &str, fallback_url: &str) -> String;
+    async fn resolve_model_url(&self, media_id: &str, fallback_url: &str) -> String;
 }
 
 pub trait MediaStore: Send + Sync {

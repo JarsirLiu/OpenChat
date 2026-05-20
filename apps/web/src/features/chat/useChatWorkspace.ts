@@ -20,6 +20,7 @@ import {
   filterSupportedImageFiles,
   getUnsupportedImageMessage,
 } from './imageUpload'
+import { compressImageFiles } from './imageCompression'
 import { useModelCatalog } from './useModelCatalog'
 import { useSessions } from './useSessions'
 import type { UploadedImageAttachment } from './types'
@@ -281,9 +282,10 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
         }
 
         setRequestError(null)
+        const preparedFiles = await compressImageFiles(imageFiles)
 
         const formData = new FormData()
-        for (const file of imageFiles) {
+        for (const file of preparedFiles) {
           formData.append('files', file, file.name)
         }
 

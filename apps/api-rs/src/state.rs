@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::collections::HashSet;
 
+use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use openchat_account_core::{
     AccountService, AuthService, CustomModelService, ModelProviderService,
 };
@@ -35,6 +37,7 @@ pub(crate) struct AppMediaStore {
     inner: DynObjectStore,
     browser_media_base_url: String,
     model_media_base_url: String,
+    use_base64_for_model_images: bool,
     resource_token_service: Arc<ResourceTokenService>,
     media_objects: Arc<MediaObjectStore>,
 }
@@ -44,6 +47,7 @@ impl AppMediaStore {
         inner: DynObjectStore,
         browser_media_base_url: String,
         model_media_base_url: String,
+        use_base64_for_model_images: bool,
         resource_token_service: Arc<ResourceTokenService>,
         media_objects: Arc<MediaObjectStore>,
     ) -> Self {
@@ -51,6 +55,7 @@ impl AppMediaStore {
             inner,
             browser_media_base_url,
             model_media_base_url,
+            use_base64_for_model_images,
             resource_token_service,
             media_objects,
         }
@@ -128,6 +133,15 @@ impl AppMediaStore {
             signature,
         )
     }
+
+    async fn data_uri_for_key(&self, key: &str) -> Option<String> {
+        let media = self.get_bytes(key).await.ok().flatten()?;
+        Some(format!(
+            "data:{};base64,{}",
+            media.content_type,
+            STANDARD.encode(media.bytes)
+        ))
+    }
 }
 
 impl MediaStore for AppMediaStore {
@@ -145,10 +159,16 @@ impl MediaStore for AppMediaStore {
     }
 }
 
+#[async_trait]
 impl ModelMediaUrlResolver for AppMediaStore {
-    fn resolve_model_url(&self, media_id: &str, fallback_url: &str) -> String {
+    async fn resolve_model_url(&self, media_id: &str, fallback_url: &str) -> String {
         if media_id.trim().is_empty() {
             return fallback_url.to_string();
+        }
+        if self.use_base64_for_model_images {
+            if let Some(data_uri) = self.data_uri_for_key(media_id).await {
+                return data_uri;
+            }
         }
         self.signed_model_media_url(media_id)
     }
@@ -223,6 +243,7 @@ impl AppState {
             object_store,
             "/api/media".to_string(),
             format!("{}/api/media", public_base_url.trim_end_matches('/')),
+            config.llm_vision_image_use_base64,
             resource_token_service,
             media_object_store,
         ));

@@ -34,6 +34,7 @@ pub struct AppConfig {
     pub auth_cookie_secure: bool,
     pub auth_cookie_domain: Option<String>,
     pub default_model_runtime: DefaultModelRuntimeConfig,
+    pub llm_vision_image_use_base64: bool,
     pub media_storage: MediaStorageConfig,
 }
 
@@ -84,6 +85,9 @@ impl AppConfig {
                     "OPENAI_BASE_URL",
                 ]),
             },
+            llm_vision_image_use_base64: env::var("OPENCHAT_LLM_VISION_IMAGE_USE_BASE64")
+                .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes"))
+                .unwrap_or(true),
             media_storage: match media_storage_backend.as_str() {
                 "s3" => MediaStorageConfig::S3 {
                     bucket: env::var("OPENCHAT_S3_BUCKET")
