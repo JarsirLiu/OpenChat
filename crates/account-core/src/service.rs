@@ -9,7 +9,7 @@ use openchat_core::{
 
 use crate::{
     AuthError, AuthService, AuthSession, AuthUser, CreateUserCustomModel, CustomModelService,
-    ModelProviderService, UpsertUserProviderSetting, UserCustomModel, UserProviderSetting,
+    ModelProviderService, UpsertUserProviderApiKey, UserCustomModel, UserProviderApiKey,
 };
 
 #[derive(Clone)]
@@ -57,22 +57,22 @@ impl AccountService {
         self.auth_service.logout(refresh_token).await;
     }
 
-    pub async fn list_user_provider_settings(
+    pub async fn list_user_provider_api_keys(
         &self,
         user_id: &str,
-    ) -> Result<Vec<UserProviderSetting>, ChatServiceError> {
+    ) -> Result<Vec<UserProviderApiKey>, ChatServiceError> {
         self.model_provider_service
-            .list_user_settings(user_id)
+            .list_user_api_keys(user_id)
             .await
     }
 
-    pub async fn upsert_user_provider_setting(
+    pub async fn upsert_user_provider_api_key(
         &self,
         user_id: &str,
-        update: UpsertUserProviderSetting,
-    ) -> Result<UserProviderSetting, ChatServiceError> {
+        update: UpsertUserProviderApiKey,
+    ) -> Result<UserProviderApiKey, ChatServiceError> {
         self.model_provider_service
-            .upsert_user_setting(user_id, update)
+            .upsert_user_api_key(user_id, update)
             .await
     }
 

@@ -1,5 +1,5 @@
-use openchat_infra::sqlite::SqliteChatStore;
-use openchat_infra::sqlite::PersistedTurnTerminalReason;
+use openchat_infra::stores::ChatStore;
+use openchat_infra::stores::PersistedTurnTerminalReason;
 
 use crate::{
     execution::{
@@ -29,7 +29,7 @@ pub enum TurnTerminalState {
 }
 
 pub async fn finalize_turn(
-    chat_store: &SqliteChatStore,
+    chat_store: &ChatStore,
     session_runtime: &SessionRuntime,
     active_turn: &ActiveTurnHandle,
     state: TurnTerminalState,
@@ -122,11 +122,11 @@ pub async fn finalize_turn(
 }
 
 pub async fn emit_session_updated(
-    chat_store: &SqliteChatStore,
+    chat_store: &ChatStore,
     session_runtime: &SessionRuntime,
     session_id: &str,
 ) -> anyhow::Result<()> {
-    let Some(session) = chat_store.get_session(session_id).await? else {
+    let Some(session) = chat_store.get_session_unscoped(session_id).await? else {
         return Ok(());
     };
 
@@ -147,3 +147,4 @@ pub async fn emit_session_updated(
 
     Ok(())
 }
+

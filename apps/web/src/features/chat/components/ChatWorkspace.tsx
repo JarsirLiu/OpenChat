@@ -25,7 +25,6 @@ const shouldPromptProviderSettings = (message: string | null) => {
     '配置当前模型',
     '保存 api key',
     '当前模型不可用',
-    '模型接入已关闭',
   ].some((pattern) => message.toLowerCase().includes(pattern))
 }
 

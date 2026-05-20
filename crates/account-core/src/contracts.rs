@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AuthSession, AuthUser, CreateUserCustomModel, UpsertUserProviderSetting, UserCustomModel,
-    UserProviderSetting,
+    AuthSession, AuthUser, CreateUserCustomModel, UpsertUserProviderApiKey, UserCustomModel,
+    UserProviderApiKey,
 };
 
 #[derive(Deserialize)]
@@ -50,21 +50,17 @@ pub struct AuthResponseDto {
 }
 
 #[derive(Serialize)]
-pub struct UserProviderSettingDto {
+pub struct UserProviderApiKeyDto {
     pub provider_key: String,
-    pub base_url: String,
-    pub enabled: bool,
     pub has_api_key: bool,
     pub created_at: String,
     pub updated_at: String,
 }
 
 #[derive(Deserialize)]
-pub struct UpsertUserProviderSettingDto {
+pub struct UpsertUserProviderApiKeyDto {
     pub provider_key: String,
-    pub base_url: String,
     pub api_key: Option<String>,
-    pub enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -117,12 +113,10 @@ impl From<AuthSession> for AuthResponseDto {
     }
 }
 
-impl From<UserProviderSetting> for UserProviderSettingDto {
-    fn from(value: UserProviderSetting) -> Self {
+impl From<UserProviderApiKey> for UserProviderApiKeyDto {
+    fn from(value: UserProviderApiKey) -> Self {
         Self {
             provider_key: value.provider_key,
-            base_url: value.base_url,
-            enabled: value.enabled,
             has_api_key: value.has_api_key,
             created_at: value.created_at,
             updated_at: value.updated_at,
@@ -130,13 +124,11 @@ impl From<UserProviderSetting> for UserProviderSettingDto {
     }
 }
 
-impl From<UpsertUserProviderSettingDto> for UpsertUserProviderSetting {
-    fn from(value: UpsertUserProviderSettingDto) -> Self {
+impl From<UpsertUserProviderApiKeyDto> for UpsertUserProviderApiKey {
+    fn from(value: UpsertUserProviderApiKeyDto) -> Self {
         Self {
             provider_key: value.provider_key,
-            base_url: value.base_url,
             api_key: value.api_key,
-            enabled: value.enabled,
         }
     }
 }

@@ -10,11 +10,25 @@ use crate::{
         RenameSessionDto, SessionDetailDto, SessionListItemDto, SessionMessageDto,
         SessionToolCallSummaryDto,
     },
+    security::extractors::CurrentUser,
     state::AppState,
 };
 
-pub async fn list_sessions(State(state): State<AppState>) -> impl IntoResponse {
-    match state.chat_service.list_sessions().await {
+fn session_access_denied_response(error: openchat_security_core::AuthorizationError) -> axum::response::Response {
+    let status = if error.message == "Session not found" {
+        StatusCode::NOT_FOUND
+    } else {
+        StatusCode::FORBIDDEN
+    };
+
+    (status, Json(serde_json::json!({ "message": error.message }))).into_response()
+}
+
+pub async fn list_sessions(
+    State(state): State<AppState>,
+    CurrentUser(auth): CurrentUser,
+) -> impl IntoResponse {
+    match state.chat_service.list_sessions(auth.user_id()).await {
         Ok(items) => {
             let sessions = items
                 .into_iter()
@@ -38,9 +52,22 @@ pub async fn list_sessions(State(state): State<AppState>) -> impl IntoResponse {
 
 pub async fn get_session(
     State(state): State<AppState>,
+    CurrentUser(auth): CurrentUser,
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
-    let session = match state.chat_service.get_session(session_id.as_str()).await {
+    if let Err(error) = state
+        .resource_access
+        .authorize_session(&auth, openchat_security_core::Action::Read, session_id.as_str())
+        .await
+    {
+        return session_access_denied_response(error);
+    }
+
+    let session = match state
+        .chat_service
+        .get_session(auth.user_id(), session_id.as_str())
+        .await
+    {
         Ok(item) => item,
         Err(error) => {
             return (
@@ -62,7 +89,7 @@ pub async fn get_session(
 
     match state
         .chat_service
-        .session_messages_snapshot(session_id.as_str())
+        .session_messages_snapshot(auth.user_id(), session_id.as_str())
         .await
     {
         Ok(messages) => (
@@ -115,9 +142,22 @@ pub async fn get_session(
 
 pub async fn delete_session(
     State(state): State<AppState>,
+    CurrentUser(auth): CurrentUser,
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.chat_service.delete_session(session_id.as_str()).await {
+    if let Err(error) = state
+        .resource_access
+        .authorize_session(&auth, openchat_security_core::Action::Delete, session_id.as_str())
+        .await
+    {
+        return session_access_denied_response(error);
+    }
+
+    match state
+        .chat_service
+        .delete_session(auth.user_id(), session_id.as_str())
+        .await
+    {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
         Ok(false) => (
             StatusCode::NOT_FOUND,
@@ -134,9 +174,18 @@ pub async fn delete_session(
 
 pub async fn rename_session(
     State(state): State<AppState>,
+    CurrentUser(auth): CurrentUser,
     Path(session_id): Path<String>,
     Json(payload): Json<RenameSessionDto>,
 ) -> impl IntoResponse {
+    if let Err(error) = state
+        .resource_access
+        .authorize_session(&auth, openchat_security_core::Action::Update, session_id.as_str())
+        .await
+    {
+        return session_access_denied_response(error);
+    }
+
     let title = payload.title.trim();
     if title.is_empty() {
         return (
@@ -146,7 +195,11 @@ pub async fn rename_session(
             .into_response();
     }
 
-    match state.chat_service.rename_session(session_id.as_str(), title).await {
+    match state
+        .chat_service
+        .rename_session(auth.user_id(), session_id.as_str(), title)
+        .await
+    {
         Ok(Some(session)) => (
             StatusCode::OK,
             Json(SessionListItemDto {

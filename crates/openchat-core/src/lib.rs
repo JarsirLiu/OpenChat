@@ -23,7 +23,9 @@ pub use context::{
 pub use error::ChatServiceError;
 pub use execution::OpenChatTurnExecutor;
 pub use execution_runtime::{TurnExecution, TurnExecutionFuture};
-pub use media::{parse_media_assets_json, MediaAsset, MediaStore, StoredMedia};
+pub use media::{
+    parse_media_assets_json, MediaAsset, MediaStore, ModelMediaUrlResolver, StoredMedia,
+};
 pub use model_provider_runtime::{
     ImageModelAccessResolver, ImageProviderRuntime, ModelProviderRuntime, ResolveImageAccessFuture,
     ResolveTextAccessFuture, ResolvedImageModelAccess, ResolvedTextModelAccess,

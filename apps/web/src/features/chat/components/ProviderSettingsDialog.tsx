@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Switch from 'antd/es/switch'
 import { AlertCircle, Check, CheckCircle2, ChevronDown, LoaderCircle, Plus, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { AuthError, authenticatedFetch } from '../../../lib/auth'
-import type { UserCustomModel, UserProviderSetting } from '../types'
+import type { UserCustomModel, UserProviderApiKey } from '../types'
 
 interface ProviderSettingsDialogProps {
   isOpen: boolean
@@ -14,7 +13,6 @@ interface ProviderSettingsDialogProps {
 
 type ProviderFormState = {
   apiKey: string
-  enabled: boolean
   hasStoredApiKey: boolean
 }
 
@@ -31,8 +29,6 @@ type FeedbackState = {
 }
 
 const DEFAULT_PROVIDER_KEY = 'openai'
-const DEFAULT_BASE_URL = 'https://aiapi.up.railway.app/v1'
-
 const CUSTOM_MODEL_TYPE_OPTIONS: Array<{
   value: UserCustomModel['model_type']
   label: string
@@ -50,7 +46,6 @@ export function ProviderSettingsDialog({
 }: ProviderSettingsDialogProps) {
   const [form, setForm] = useState<ProviderFormState>({
     apiKey: '',
-    enabled: true,
     hasStoredApiKey: false,
   })
   const [draft, setDraft] = useState<ModelDraftState>({
@@ -81,7 +76,7 @@ export function ProviderSettingsDialog({
 
       try {
         const [providerResponse, customModelsResponse] = await Promise.all([
-          authenticatedFetch('/api/provider-settings'),
+          authenticatedFetch('/api/user-provider-api-keys'),
           authenticatedFetch('/api/custom-models'),
         ])
 
@@ -102,7 +97,7 @@ export function ProviderSettingsDialog({
         const [providerPayload, customPayload] = (await Promise.all([
           providerResponse.json(),
           customModelsResponse.json(),
-        ])) as [UserProviderSetting[], UserCustomModel[]]
+        ])) as [UserProviderApiKey[], UserCustomModel[]]
 
         if (!active) {
           return
@@ -113,7 +108,6 @@ export function ProviderSettingsDialog({
 
         setForm({
           apiKey: '',
-          enabled: currentSetting?.enabled ?? true,
           hasStoredApiKey: currentSetting?.has_api_key ?? false,
         })
         setCustomModels(customPayload)
@@ -190,26 +184,23 @@ export function ProviderSettingsDialog({
     setFeedback(null)
 
     try {
-      const response = await authenticatedFetch('/api/provider-settings', {
+      const response = await authenticatedFetch('/api/user-provider-api-keys', {
         method: 'PUT',
         body: JSON.stringify({
           provider_key: DEFAULT_PROVIDER_KEY,
-          base_url: DEFAULT_BASE_URL,
           api_key: form.apiKey.trim() || undefined,
-          enabled: form.enabled,
         }),
       })
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { message?: string } | null
-        throw new Error(payload?.message ?? 'Failed to save provider settings')
+        throw new Error(payload?.message ?? 'Failed to save API key')
       }
 
-      const payload = (await response.json()) as UserProviderSetting
+      const payload = (await response.json()) as UserProviderApiKey
       setForm((current) => ({
         ...current,
         apiKey: '',
-        enabled: payload.enabled,
         hasStoredApiKey: payload.has_api_key,
       }))
       setFeedback({
@@ -224,7 +215,7 @@ export function ProviderSettingsDialog({
       }
       setFeedback({
         type: 'error',
-        message: error instanceof Error ? error.message : 'Failed to save provider settings',
+        message: error instanceof Error ? error.message : 'Failed to save API key',
       })
     } finally {
       setSaving(false)
@@ -236,13 +227,6 @@ export function ProviderSettingsDialog({
       setFeedback({
         type: 'error',
         message: '请先填写模型名称',
-      })
-      return
-    }
-    if (!draft.baseUrl.trim()) {
-      setFeedback({
-        type: 'error',
-        message: '请先填写 Base URL',
       })
       return
     }
@@ -275,7 +259,7 @@ export function ProviderSettingsDialog({
 
       const payload = (await response.json()) as UserCustomModel
       setCustomModels((current) => [...current, payload])
-      setDraft((current) => ({ ...current, modelName: '', baseUrl: '', apiKey: '' }))
+      setDraft((current) => ({ ...current, modelName: '', apiKey: '' }))
       setFeedback({
         type: 'success',
         message: '自定义模型已添加，并已进入可选列表',
@@ -402,11 +386,6 @@ export function ProviderSettingsDialog({
                         获取 API Key，保存后使用模型。
                       </p>
                     </div>
-                    <Switch
-                      checked={form.enabled}
-                      size="small"
-                      onChange={(checked) => updateForm({ enabled: checked })}
-                    />
                   </div>
 
                   <div className="space-y-4">
@@ -419,6 +398,11 @@ export function ProviderSettingsDialog({
                           </span>
                         ) : null}
                       </div>
+                      {!form.hasStoredApiKey ? (
+                        <div className="mb-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-[12px] leading-5 text-gray-500 dark:border-gray-800 dark:bg-[#171717] dark:text-gray-400">
+                          保存 API Key 后即可使用模型。
+                        </div>
+                      ) : null}
                       <input
                         type="password"
                         value={form.apiKey}
@@ -472,7 +456,7 @@ export function ProviderSettingsDialog({
                           type="url"
                           value={draft.baseUrl}
                           onChange={(event) => updateDraft({ baseUrl: event.target.value })}
-                          placeholder="https://your-openai-compatible-endpoint/v1"
+                          placeholder="请输入 OpenAI 兼容 Base URL"
                           className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
                         />
                       </label>

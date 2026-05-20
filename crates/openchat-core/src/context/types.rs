@@ -1,7 +1,7 @@
 #[derive(Clone)]
 pub enum OutboundContentPart {
     Text { text: String },
-    ImageUrl { url: String },
+    ImageUrl { url: String, media_id: Option<String> },
 }
 
 #[derive(Clone)]

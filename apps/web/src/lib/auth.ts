@@ -1,7 +1,3 @@
-const ACCESS_TOKEN_KEY = 'openchat_access_token'
-const REFRESH_TOKEN_KEY = 'openchat_refresh_token'
-const USER_INFO_KEY = 'openchat_user_info'
-
 export interface AuthUser {
   id: string
   username: string
@@ -9,11 +5,12 @@ export interface AuthUser {
   is_admin?: boolean
 }
 
-interface AuthResponse {
-  status: string
-  token: string
-  refresh_token: string
+interface UserInfoResponse {
   user_info: AuthUser
+}
+
+interface CsrfResponse {
+  csrf_token: string
 }
 
 export class AuthError extends Error {
@@ -25,154 +22,148 @@ export class AuthError extends Error {
   }
 }
 
-let refreshInFlight: Promise<string> | null = null
+let refreshInFlight: Promise<void> | null = null
+let csrfToken: string | null = null
 
-export const getAccessToken = () => window.localStorage.getItem(ACCESS_TOKEN_KEY)
-export const getRefreshToken = () => window.localStorage.getItem(REFRESH_TOKEN_KEY)
-
-export const getStoredUser = (): AuthUser | null => {
-  const raw = window.localStorage.getItem(USER_INFO_KEY)
-  return raw ? (JSON.parse(raw) as AuthUser) : null
-}
-
-export const saveAuthData = (payload: AuthResponse) => {
-  window.localStorage.setItem(ACCESS_TOKEN_KEY, payload.token)
-  window.localStorage.setItem(REFRESH_TOKEN_KEY, payload.refresh_token)
-  window.localStorage.setItem(USER_INFO_KEY, JSON.stringify(payload.user_info))
+function isUnsafeMethod(method?: string) {
+  const normalized = (method ?? 'GET').toUpperCase()
+  return normalized !== 'GET' && normalized !== 'HEAD' && normalized !== 'OPTIONS' && normalized !== 'TRACE'
 }
 
 export const clearAuthData = () => {
-  window.localStorage.removeItem(ACCESS_TOKEN_KEY)
-  window.localStorage.removeItem(REFRESH_TOKEN_KEY)
-  window.localStorage.removeItem(USER_INFO_KEY)
+  csrfToken = null
 }
 
-export async function login(account: string, password: string) {
-  let response: Response
-  try {
-    response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account, password }),
-    })
-  } catch {
-    throw new AuthError('OpenChat backend is not ready yet. Please wait a moment and try again.', 503)
+async function ensureCsrfToken(forceRefresh = false) {
+  if (!forceRefresh && csrfToken) {
+    return csrfToken
   }
+
+  const response = await fetch('/api/auth/csrf', {
+    credentials: 'same-origin',
+  })
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null
-    throw new AuthError(payload?.message ?? 'Login failed', response.status)
+    throw new AuthError('Failed to initialize secure session', response.status)
   }
 
-  const payload = (await response.json()) as AuthResponse
-  saveAuthData(payload)
-  return payload.user_info
+  const payload = (await response.json()) as CsrfResponse
+  csrfToken = payload.csrf_token
+  return csrfToken
 }
 
-export async function register(email: string, password: string, username?: string) {
-  let response: Response
-  try {
-    response = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, username }),
-    })
-  } catch {
-    throw new AuthError('OpenChat backend is not ready yet. Please wait a moment and try again.', 503)
+async function fetchWithSession(url: string, options: RequestInit = {}) {
+  const headers = new Headers(options.headers ?? {})
+  if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+  if (isUnsafeMethod(options.method)) {
+    headers.set('X-CSRF-Token', await ensureCsrfToken())
   }
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null
-    throw new AuthError(payload?.message ?? 'Registration failed', response.status)
-  }
-
-  const payload = (await response.json()) as AuthResponse
-  saveAuthData(payload)
-  return payload.user_info
+  return fetch(url, {
+    ...options,
+    credentials: 'same-origin',
+    headers,
+  })
 }
 
-async function refreshAccessToken() {
-  const refreshToken = getRefreshToken()
-  if (!refreshToken) {
-    throw new AuthError('Authentication required', 401)
-  }
-
-  const response = await fetch('/api/auth/refresh', {
+async function refreshSession() {
+  const response = await fetchWithSession('/api/auth/refresh', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
   })
 
   if (!response.ok) {
     clearAuthData()
     throw new AuthError('Authentication required', response.status)
   }
+}
 
-  const payload = (await response.json()) as AuthResponse
-  saveAuthData(payload)
-  return payload.token
+async function parseUserResponse(response: Response, fallbackMessage: string) {
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null
+    throw new AuthError(payload?.message ?? fallbackMessage, response.status)
+  }
+
+  const payload = (await response.json()) as UserInfoResponse
+  return payload.user_info
+}
+
+export async function login(account: string, password: string) {
+  try {
+    await ensureCsrfToken()
+    const response = await fetchWithSession('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ account, password }),
+    })
+    return await parseUserResponse(response, 'Login failed')
+  } catch (error) {
+    if (error instanceof AuthError) {
+      throw error
+    }
+    throw new AuthError('OpenChat backend is not ready yet. Please wait a moment and try again.', 503)
+  }
+}
+
+export async function register(email: string, password: string, username?: string) {
+  try {
+    await ensureCsrfToken()
+    const response = await fetchWithSession('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, username }),
+    })
+    return await parseUserResponse(response, 'Registration failed')
+  } catch (error) {
+    if (error instanceof AuthError) {
+      throw error
+    }
+    throw new AuthError('OpenChat backend is not ready yet. Please wait a moment and try again.', 503)
+  }
 }
 
 export async function authenticatedFetch(url: string, options: RequestInit = {}) {
-  const doFetch = async (token: string | null) => {
-    const headers = new Headers(options.headers ?? {})
-    if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
-      headers.set('Content-Type', 'application/json')
-    }
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`)
-    }
-    return fetch(url, {
-      ...options,
-      headers,
-    })
-  }
-
-  let response = await doFetch(getAccessToken())
-  if (response.status !== 401) {
+  const response = await fetchWithSession(url, options)
+  if (response.status !== 401 || url === '/api/auth/refresh') {
     return response
   }
 
   if (!refreshInFlight) {
-    refreshInFlight = refreshAccessToken().finally(() => {
+    refreshInFlight = refreshSession().finally(() => {
       refreshInFlight = null
     })
   }
 
-  const nextToken = await refreshInFlight
-  response = await doFetch(nextToken)
-  if (response.status === 401) {
+  await refreshInFlight
+  const retried = await fetchWithSession(url, options)
+  if (retried.status === 401) {
     clearAuthData()
     throw new AuthError('Authentication required', 401)
   }
-  return response
+  return retried
 }
 
 export async function fetchCurrentUser() {
-  const token = getAccessToken()
-  if (!token) {
-    return null
-  }
-
   const response = await authenticatedFetch('/api/auth/me')
   if (!response.ok) {
-    clearAuthData()
-    return null
+    if (response.status === 401) {
+      clearAuthData()
+      return null
+    }
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null
+    throw new AuthError(payload?.message ?? 'Authentication failed', response.status)
   }
 
-  const payload = (await response.json()) as { user_info: AuthUser }
-  window.localStorage.setItem(USER_INFO_KEY, JSON.stringify(payload.user_info))
+  const payload = (await response.json()) as UserInfoResponse
   return payload.user_info
 }
 
 export async function logout() {
-  const refreshToken = getRefreshToken()
-  if (refreshToken) {
-    await fetch('/api/auth/logout', {
+  try {
+    await ensureCsrfToken()
+    await fetchWithSession('/api/auth/logout', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    }).catch(() => undefined)
+    })
+  } finally {
+    clearAuthData()
   }
-  clearAuthData()
 }

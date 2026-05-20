@@ -1,4 +1,4 @@
-import { isValidElement, type ComponentPropsWithoutRef, type ReactNode } from 'react'
+import { isValidElement, type ComponentPropsWithoutRef, type ReactElement, type ReactNode } from 'react'
 
 const getCodeLanguage = (className?: string) => {
   if (!className) {
@@ -14,9 +14,11 @@ const getPreLanguage = (children: ReactNode) => {
     return null
   }
 
+  const element = children as ReactElement<{ className?: string }>
+
   const className =
-    'className' in children.props && typeof children.props.className === 'string'
-      ? children.props.className
+    typeof element.props.className === 'string'
+      ? element.props.className
       : undefined
 
   return getCodeLanguage(className)

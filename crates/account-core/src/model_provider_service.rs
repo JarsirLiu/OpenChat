@@ -1,82 +1,64 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use openchat_core::{
     ChatServiceError, ResolvedImageModelAccess, ResolvedTextModelAccess, ToolAccessOutcome,
     ToolAccessRequirement, TurnModelRef, TurnToolRef,
 };
-use openchat_infra::sqlite::{ProviderSettingUpdate, SqliteProviderSettingsStore};
+use openchat_infra::stores::{
+    PersistedUserProviderApiKey, UpdateUserProviderApiKey, UserProviderApiKeyStore,
+};
 
-use crate::{UpsertUserProviderSetting, UserProviderSetting};
-
-#[derive(Clone)]
-pub struct ProviderRuntimeFallback {
-    pub base_url: String,
-    pub api_key: Option<String>,
-}
+use crate::{
+    SystemProviderRegistry, UpsertUserProviderApiKey, UserProviderApiKey,
+};
 
 #[derive(Clone)]
 pub struct ModelProviderService {
-    store: Arc<SqliteProviderSettingsStore>,
-    fallbacks: Arc<HashMap<String, ProviderRuntimeFallback>>,
+    user_provider_api_key_store: Arc<UserProviderApiKeyStore>,
+    system_provider_registry: Arc<SystemProviderRegistry>,
 }
 
 impl ModelProviderService {
     pub fn new(
-        store: Arc<SqliteProviderSettingsStore>,
-        fallbacks: HashMap<String, ProviderRuntimeFallback>,
+        user_provider_api_key_store: Arc<UserProviderApiKeyStore>,
+        system_provider_registry: SystemProviderRegistry,
     ) -> Self {
         Self {
-            store,
-            fallbacks: Arc::new(fallbacks),
+            user_provider_api_key_store,
+            system_provider_registry: Arc::new(system_provider_registry),
         }
     }
 
-    pub async fn list_user_settings(
+    pub async fn list_user_api_keys(
         &self,
         user_id: &str,
-    ) -> Result<Vec<UserProviderSetting>, ChatServiceError> {
-        self.store
-            .list_user_settings(user_id)
+    ) -> Result<Vec<UserProviderApiKey>, ChatServiceError> {
+        self.user_provider_api_key_store
+            .list_user_api_keys(user_id)
             .await
+            .map_err(internal_error)
             .map(|items| {
                 items
                     .into_iter()
-                    .map(|item| UserProviderSetting {
-                        provider_key: item.provider_key,
-                        base_url: item.base_url,
-                        enabled: item.enabled,
-                        has_api_key: !item.api_key.trim().is_empty(),
-                        created_at: item.created_at,
-                        updated_at: item.updated_at,
-                    })
-                    .collect()
+                    .map(Self::build_user_api_key)
+                    .collect::<Vec<_>>()
             })
-            .map_err(internal_error)
     }
 
-    pub async fn upsert_user_setting(
+    pub async fn upsert_user_api_key(
         &self,
         user_id: &str,
-        update: UpsertUserProviderSetting,
-    ) -> Result<UserProviderSetting, ChatServiceError> {
-        validate_setting(update.provider_key.as_str(), update.base_url.as_str())?;
-        self.store
-            .upsert_user_setting(ProviderSettingUpdate {
+        update: UpsertUserProviderApiKey,
+    ) -> Result<UserProviderApiKey, ChatServiceError> {
+        validate_provider_key(update.provider_key.as_str())?;
+        self.user_provider_api_key_store
+            .upsert_user_api_key(UpdateUserProviderApiKey {
                 user_id: user_id.to_string(),
                 provider_key: update.provider_key,
-                base_url: update.base_url,
                 api_key: update.api_key,
-                enabled: update.enabled,
             })
             .await
-            .map(|item| UserProviderSetting {
-                provider_key: item.provider_key,
-                base_url: item.base_url,
-                enabled: item.enabled,
-                has_api_key: !item.api_key.trim().is_empty(),
-                created_at: item.created_at,
-                updated_at: item.updated_at,
-            })
+            .map(Self::build_user_api_key)
             .map_err(internal_error)
     }
 
@@ -170,46 +152,45 @@ impl ModelProviderService {
         user_id: &str,
         provider_key: &str,
     ) -> Result<ProviderCredentialsState, ChatServiceError> {
-        if let Some(setting) = self
-            .store
-            .find_user_setting(user_id, provider_key)
+        let Some(system_provider) = self.system_provider_registry.get(provider_key) else {
+            return Ok(ProviderCredentialsState::Denied {
+                reason: "当前模型绑定的系统 Provider 不存在".to_string(),
+            });
+        };
+
+        if let Some(api_key_record) = self
+            .user_provider_api_key_store
+            .find_user_api_key(user_id, provider_key)
             .await
             .map_err(internal_error)?
         {
-            if !setting.enabled {
-                return Ok(ProviderCredentialsState::Denied {
-                    reason: "当前模型接入已关闭，请先在右侧参数中启用并保存 API Key".to_string(),
-                });
-            }
+            let base_url = system_provider.base_url.clone();
+            let api_key = api_key_record.api_key;
 
-            if setting.base_url.trim().is_empty() || setting.api_key.trim().is_empty() {
+            if base_url.trim().is_empty() || api_key.trim().is_empty() {
                 return Ok(ProviderCredentialsState::Denied {
-                    reason: "请先在右侧参数中保存 API Key，然后再使用这个模型".to_string(),
+                    reason: "请先在右侧参数中填写 API Key，然后再使用这个模型".to_string(),
                 });
             }
 
             return Ok(ProviderCredentialsState::Ready {
-                base_url: setting.base_url,
-                api_key: setting.api_key,
+                base_url,
+                api_key,
             });
         }
 
-        let Some(fallback) = self.fallbacks.get(provider_key) else {
-            return Ok(ProviderCredentialsState::Denied {
-                reason: "请先在右侧参数中保存 API Key，然后再使用这个模型".to_string(),
-            });
-        };
-
-        let Some(api_key) = fallback.api_key.clone() else {
-            return Ok(ProviderCredentialsState::Denied {
-                reason: "请先在右侧参数中保存 API Key，然后再使用这个模型".to_string(),
-            });
-        };
-
-        Ok(ProviderCredentialsState::Ready {
-            base_url: fallback.base_url.clone(),
-            api_key,
+        Ok(ProviderCredentialsState::Denied {
+            reason: "请先在右侧参数中填写 API Key，然后再使用这个模型".to_string(),
         })
+    }
+
+    fn build_user_api_key(stored: PersistedUserProviderApiKey) -> UserProviderApiKey {
+        UserProviderApiKey {
+            provider_key: stored.provider_key,
+            has_api_key: !stored.api_key.trim().is_empty(),
+            created_at: stored.created_at,
+            updated_at: stored.updated_at,
+        }
     }
 }
 
@@ -218,22 +199,9 @@ enum ProviderCredentialsState {
     Denied { reason: String },
 }
 
-fn validate_setting(provider_key: &str, base_url: &str) -> Result<(), ChatServiceError> {
+fn validate_provider_key(provider_key: &str) -> Result<(), ChatServiceError> {
     if provider_key.trim().is_empty() {
         return Err(ChatServiceError::new(400, "A provider key is required"));
-    }
-    let normalized = base_url.trim();
-    if normalized.is_empty() {
-        return Err(ChatServiceError::new(
-            400,
-            "A provider base URL is required",
-        ));
-    }
-    if !(normalized.starts_with("http://") || normalized.starts_with("https://")) {
-        return Err(ChatServiceError::new(
-            400,
-            "Provider base URL must start with http:// or https://",
-        ));
     }
     Ok(())
 }
@@ -241,3 +209,4 @@ fn validate_setting(provider_key: &str, base_url: &str) -> Result<(), ChatServic
 fn internal_error(error: anyhow::Error) -> ChatServiceError {
     ChatServiceError::new(500, error.to_string())
 }
+

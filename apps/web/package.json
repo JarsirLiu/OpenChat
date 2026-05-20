@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@lobehub/icons": "^5.8.0",
+    "@microsoft/fetch-event-source": "^2.0.1",
     "@openchat/chat-core": "workspace:*",
     "@openchat/protocol": "workspace:*",
     "@openchat/ui": "workspace:*",

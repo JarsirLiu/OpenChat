@@ -351,10 +351,11 @@ pub fn text_part(text: String) -> Value {
     })
 }
 
-pub fn image_part(url: String, alt: &str) -> Value {
+pub fn image_part(url: String, alt: &str, media_id: Option<String>) -> Value {
     json!({
         "type": "image",
         "url": url,
         "alt": alt,
+        "media_id": media_id,
     })
 }

@@ -1,19 +1,25 @@
 use axum::{
     extract::State,
-    http::{header, HeaderMap, StatusCode},
+    http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use openchat_account_core::{
-    AuthError, AuthResponseDto, AuthUser, CreateUserCustomModelDto, LoginRequestDto,
-    LogoutRequestDto, RefreshRequestDto, RegisterRequestDto, UpsertUserProviderSettingDto,
-    UserCustomModelDto, UserInfoDto, UserProviderSettingDto,
+    AuthError, AuthUser, CreateUserCustomModelDto, LoginRequestDto, RegisterRequestDto,
+    UpsertUserProviderApiKeyDto, UserCustomModelDto, UserInfoDto, UserProviderApiKeyDto,
 };
+use axum_extra::extract::cookie::CookieJar;
 
-use crate::{http::errors::ErrorResponseDto, state::AppState};
+use crate::{
+    http::errors::ErrorResponseDto,
+    security::csrf,
+    security::extractors::CurrentUser,
+    state::AppState,
+};
 
 pub async fn register(
     State(state): State<AppState>,
+    jar: CookieJar,
     Json(payload): Json<RegisterRequestDto>,
 ) -> impl IntoResponse {
     match state
@@ -25,13 +31,17 @@ pub async fn register(
         )
         .await
     {
-        Ok(session) => (StatusCode::CREATED, Json(AuthResponseDto::from(session))).into_response(),
+        Ok(session) => {
+            let user = session.user.clone();
+            auth_success_response(StatusCode::CREATED, jar, &state, user, Some(session))
+        }
         Err(error) => auth_error_response(error),
     }
 }
 
 pub async fn login(
     State(state): State<AppState>,
+    jar: CookieJar,
     Json(payload): Json<LoginRequestDto>,
 ) -> impl IntoResponse {
     match state
@@ -39,61 +49,96 @@ pub async fn login(
         .login(payload.account.trim(), payload.password.as_str())
         .await
     {
-        Ok(session) => (StatusCode::OK, Json(AuthResponseDto::from(session))).into_response(),
+        Ok(session) => {
+            let user = session.user.clone();
+            auth_success_response(StatusCode::OK, jar, &state, user, Some(session))
+        }
         Err(error) => auth_error_response(error),
     }
 }
 
-pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
-    let Some(token) = bearer_token(&headers) else {
-        return auth_error_response(AuthError::new(401, "Authentication required"));
+pub async fn csrf_token(State(state): State<AppState>, jar: CookieJar) -> impl IntoResponse {
+    let token = jar
+        .get(state.auth_cookies.csrf_cookie_name())
+        .map(|cookie| cookie.value().to_string())
+        .unwrap_or_else(csrf::new_token);
+
+    let jar = jar.add(state.auth_cookies.build_csrf_cookie(token.as_str()));
+    (
+        StatusCode::OK,
+        jar,
+        Json(serde_json::json!({ "csrf_token": token })),
+    )
+        .into_response()
+}
+
+pub async fn me(CurrentUser(auth): CurrentUser) -> impl IntoResponse {
+    let user = AuthUser {
+        id: auth.user_id().to_string(),
+        username: auth.subject().username.clone().unwrap_or_default(),
+        email: auth.subject().email.clone().unwrap_or_default(),
+        is_admin: auth.is_admin(),
     };
 
-    match state.account_service.current_user(token).await {
-        Ok(user) => (StatusCode::OK, Json(UserInfoDto::from(user))).into_response(),
-        Err(error) => auth_error_response(error),
-    }
+    (StatusCode::OK, Json(UserInfoDto::from(user))).into_response()
 }
 
 pub async fn refresh(
     State(state): State<AppState>,
-    Json(payload): Json<RefreshRequestDto>,
+    jar: CookieJar,
 ) -> impl IntoResponse {
-    match state.account_service.refresh(payload.refresh_token).await {
-        Ok(session) => (StatusCode::OK, Json(AuthResponseDto::from(session))).into_response(),
+    let Some(refresh_token) = jar
+        .get(state.auth_cookies.refresh_cookie_name())
+        .map(|cookie| cookie.value().to_string())
+    else {
+        return auth_error_response(AuthError::new(401, "Authentication required"));
+    };
+
+    match state.account_service.refresh(refresh_token).await {
+        Ok(session) => {
+            let user = session.user.clone();
+            auth_success_response(StatusCode::OK, jar, &state, user, Some(session))
+        }
         Err(error) => auth_error_response(error),
     }
 }
 
 pub async fn logout(
     State(state): State<AppState>,
-    Json(payload): Json<LogoutRequestDto>,
+    jar: CookieJar,
 ) -> impl IntoResponse {
-    state
-        .account_service
-        .logout(payload.refresh_token.as_str())
-        .await;
-    (StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))).into_response()
+    if let Some(refresh_token) = jar
+        .get(state.auth_cookies.refresh_cookie_name())
+        .map(|cookie| cookie.value().to_string())
+    {
+        state.account_service.logout(refresh_token.as_str()).await;
+    }
+
+    let jar = jar
+        .remove(state.auth_cookies.clear_access_cookie())
+        .remove(state.auth_cookies.clear_refresh_cookie())
+        .remove(state.auth_cookies.clear_csrf_cookie());
+    (
+        StatusCode::OK,
+        jar,
+        Json(serde_json::json!({ "status": "ok" })),
+    )
+        .into_response()
 }
 
-pub async fn list_user_provider_settings(
+pub async fn list_user_provider_api_keys(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    CurrentUser(auth): CurrentUser,
 ) -> impl IntoResponse {
-    let user = match require_auth_user(&state, &headers).await {
-        Ok(user) => user,
-        Err(response) => return response,
-    };
-
     match state
         .account_service
-        .list_user_provider_settings(user.id.as_str())
+        .list_user_provider_api_keys(auth.user_id())
         .await
     {
         Ok(items) => Json(
             items
                 .into_iter()
-                .map(UserProviderSettingDto::from)
+                .map(UserProviderApiKeyDto::from)
                 .collect::<Vec<_>>(),
         )
         .into_response(),
@@ -105,22 +150,17 @@ pub async fn list_user_provider_settings(
     }
 }
 
-pub async fn upsert_user_provider_setting(
+pub async fn upsert_user_provider_api_key(
     State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(payload): Json<UpsertUserProviderSettingDto>,
+    CurrentUser(auth): CurrentUser,
+    Json(payload): Json<UpsertUserProviderApiKeyDto>,
 ) -> impl IntoResponse {
-    let user = match require_auth_user(&state, &headers).await {
-        Ok(user) => user,
-        Err(response) => return response,
-    };
-
     match state
         .account_service
-        .upsert_user_provider_setting(user.id.as_str(), payload.into())
+        .upsert_user_provider_api_key(auth.user_id(), payload.into())
         .await
     {
-        Ok(setting) => Json(UserProviderSettingDto::from(setting)).into_response(),
+        Ok(setting) => Json(UserProviderApiKeyDto::from(setting)).into_response(),
         Err(error) => (
             StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             Json(serde_json::json!({ "message": error.message })),
@@ -131,16 +171,11 @@ pub async fn upsert_user_provider_setting(
 
 pub async fn list_user_custom_models(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    CurrentUser(auth): CurrentUser,
 ) -> impl IntoResponse {
-    let user = match require_auth_user(&state, &headers).await {
-        Ok(user) => user,
-        Err(response) => return response,
-    };
-
     match state
         .account_service
-        .list_user_custom_models(user.id.as_str())
+        .list_user_custom_models(auth.user_id())
         .await
     {
         Ok(items) => Json(
@@ -160,17 +195,12 @@ pub async fn list_user_custom_models(
 
 pub async fn create_user_custom_model(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    CurrentUser(auth): CurrentUser,
     Json(payload): Json<CreateUserCustomModelDto>,
 ) -> impl IntoResponse {
-    let user = match require_auth_user(&state, &headers).await {
-        Ok(user) => user,
-        Err(response) => return response,
-    };
-
     match state
         .account_service
-        .create_user_custom_model(user.id.as_str(), payload.into())
+        .create_user_custom_model(auth.user_id(), payload.into())
         .await
     {
         Ok(item) => (StatusCode::CREATED, Json(UserCustomModelDto::from(item))).into_response(),
@@ -184,17 +214,12 @@ pub async fn create_user_custom_model(
 
 pub async fn delete_user_custom_model(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    CurrentUser(auth): CurrentUser,
     axum::extract::Path(model_config_id): axum::extract::Path<String>,
 ) -> impl IntoResponse {
-    let user = match require_auth_user(&state, &headers).await {
-        Ok(user) => user,
-        Err(response) => return response,
-    };
-
     match state
         .account_service
-        .delete_user_custom_model(user.id.as_str(), model_config_id.as_str())
+        .delete_user_custom_model(auth.user_id(), model_config_id.as_str())
         .await
     {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
@@ -211,41 +236,6 @@ pub async fn delete_user_custom_model(
     }
 }
 
-pub async fn require_auth_user(
-    state: &AppState,
-    headers: &HeaderMap,
-) -> Result<AuthUser, axum::response::Response> {
-    let Some(token) = bearer_token(headers) else {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponseDto {
-                message: "Authentication required".to_string(),
-            }),
-        )
-            .into_response());
-    };
-
-    state
-        .account_service
-        .current_user(token)
-        .await
-        .map_err(|error| {
-            (
-                StatusCode::from_u16(error.status_code)
-                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                Json(ErrorResponseDto {
-                    message: error.message,
-                }),
-            )
-                .into_response()
-        })
-}
-
-fn bearer_token(headers: &HeaderMap) -> Option<&str> {
-    let header_value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
-    header_value.strip_prefix("Bearer ")
-}
-
 fn auth_error_response(error: AuthError) -> axum::response::Response {
     let status_code =
         StatusCode::from_u16(error.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
@@ -256,4 +246,21 @@ fn auth_error_response(error: AuthError) -> axum::response::Response {
         }),
     )
         .into_response()
+}
+
+fn auth_success_response(
+    status: StatusCode,
+    jar: CookieJar,
+    state: &AppState,
+    user: AuthUser,
+    session: Option<openchat_account_core::AuthSession>,
+) -> axum::response::Response {
+    let jar = if let Some(session) = session.as_ref() {
+        let [access_cookie, refresh_cookie] = state.auth_cookies.session_cookies(session);
+        jar.add(access_cookie).add(refresh_cookie)
+    } else {
+        jar
+    };
+
+    (status, jar, Json(UserInfoDto::from(user))).into_response()
 }

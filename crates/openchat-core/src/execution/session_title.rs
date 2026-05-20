@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use futures_util::StreamExt;
-use openchat_infra::sqlite::SqliteChatStore;
+use openchat_infra::stores::ChatStore;
 
 use crate::{
     execution::{
@@ -17,7 +17,7 @@ const FALLBACK_TITLE_CHARS: usize = 5;
 const DEFAULT_EMPTY_TITLE: &str = "新对话";
 
 pub struct SessionTitleGenerator<R> {
-    chat_store: Arc<SqliteChatStore>,
+    chat_store: Arc<ChatStore>,
     model_provider_runtime: ModelProviderRuntime<R>,
 }
 
@@ -35,7 +35,7 @@ where
     R: TextModelAccessResolver + Send + Sync + 'static,
 {
     pub fn new(
-        chat_store: Arc<SqliteChatStore>,
+        chat_store: Arc<ChatStore>,
         model_provider_runtime: ModelProviderRuntime<R>,
     ) -> Self {
         Self {
@@ -57,7 +57,11 @@ where
             return;
         }
 
-        let Ok(Some(session)) = self.chat_store.get_session(plan.session_id.as_str()).await else {
+        let Ok(Some(session)) = self
+            .chat_store
+            .get_session(plan.user_id.as_str(), plan.session_id.as_str())
+            .await
+        else {
             return;
         };
 
@@ -71,13 +75,21 @@ where
 
         let _ = self
             .chat_store
-            .update_session_title(plan.session_id.as_str(), fallback_title.as_str())
+            .update_session_title(
+                plan.user_id.as_str(),
+                plan.session_id.as_str(),
+                fallback_title.as_str(),
+            )
             .await;
     }
 
     async fn generate(&self, plan: TurnPlan, session_runtime: SessionRuntime) {
         let fallback_title = fallback_title_from_prompt(plan.prompt.as_str());
-        let Ok(Some(session)) = self.chat_store.get_session(plan.session_id.as_str()).await else {
+        let Ok(Some(session)) = self
+            .chat_store
+            .get_session(plan.user_id.as_str(), plan.session_id.as_str())
+            .await
+        else {
             return;
         };
 
@@ -100,7 +112,11 @@ where
 
         let Ok(Some(updated_session)) = self
             .chat_store
-            .update_session_title(plan.session_id.as_str(), final_title.as_str())
+            .update_session_title(
+                plan.user_id.as_str(),
+                plan.session_id.as_str(),
+                final_title.as_str(),
+            )
             .await
         else {
             return;
@@ -195,3 +211,4 @@ fn build_title_prompt(user_prompt: &str) -> String {
         user_prompt.trim()
     )
 }
+

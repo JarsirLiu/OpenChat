@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use tokio::fs;
 
-use super::{ObjectStore, StoredObject};
+use super::{ObjectStore, RetrievedObject, StoredObject};
 
 #[derive(Clone, Debug)]
 pub struct LocalObjectStore {
@@ -68,6 +68,25 @@ impl ObjectStore for LocalObjectStore {
             size_bytes: bytes.len(),
         })
     }
+
+    async fn get_bytes(&self, key: &str) -> Result<Option<RetrievedObject>> {
+        let path = self.resolve_path(key);
+        let bytes = match fs::read(&path).await {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to read local media file {}", path.display()))
+            }
+        };
+
+        Ok(Some(RetrievedObject {
+            key: key.to_string(),
+            content_type: infer_content_type(key),
+            size_bytes: bytes.len(),
+            bytes,
+        }))
+    }
 }
 
 fn normalize_public_base_url(value: String) -> String {
@@ -76,5 +95,18 @@ fn normalize_public_base_url(value: String) -> String {
         "/media".to_string()
     } else {
         trimmed.trim_end_matches('/').to_string()
+    }
+}
+
+fn infer_content_type(key: &str) -> String {
+    let normalized = key.to_ascii_lowercase();
+    if normalized.ends_with(".png") {
+        "image/png".to_string()
+    } else if normalized.ends_with(".jpg") || normalized.ends_with(".jpeg") {
+        "image/jpeg".to_string()
+    } else if normalized.ends_with(".webp") {
+        "image/webp".to_string()
+    } else {
+        "application/octet-stream".to_string()
     }
 }

@@ -7,7 +7,7 @@ use aws_sdk_s3::{
     Client,
 };
 
-use super::{ObjectStore, S3StorageConfig, StoredObject};
+use super::{ObjectStore, RetrievedObject, S3StorageConfig, StoredObject};
 
 #[derive(Clone)]
 pub struct S3CompatibleObjectStore {
@@ -88,5 +88,36 @@ impl ObjectStore for S3CompatibleObjectStore {
             content_type: content_type.to_string(),
             size_bytes: bytes.len(),
         })
+    }
+
+    async fn get_bytes(&self, key: &str) -> Result<Option<RetrievedObject>> {
+        let response = match self.client.get_object().bucket(&self.bucket).key(key).send().await {
+            Ok(response) => response,
+            Err(error) => {
+                let message = error.to_string();
+                if message.contains("NoSuchKey") || message.contains("not found") {
+                    return Ok(None);
+                }
+                return Err(anyhow::anyhow!(error)).with_context(|| {
+                    format!(
+                        "failed to download object `{key}` from bucket `{}`",
+                        self.bucket
+                    )
+                });
+            }
+        };
+
+        let content_type = response
+            .content_type()
+            .map(str::to_string)
+            .unwrap_or_else(|| "application/octet-stream".to_string());
+        let bytes = response.body.collect().await?.into_bytes().to_vec();
+
+        Ok(Some(RetrievedObject {
+            key: key.to_string(),
+            size_bytes: bytes.len(),
+            content_type,
+            bytes,
+        }))
     }
 }

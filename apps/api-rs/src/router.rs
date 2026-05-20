@@ -1,26 +1,28 @@
 use axum::{
+    http::{header, HeaderName, HeaderValue, Method},
+    middleware,
     routing::{get, post},
     Router,
 };
-use tower_http::services::ServeDir;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
-use crate::{config::MediaStorageConfig, handlers, state::AppState};
+use crate::{config::AppConfig, handlers, state::AppState};
 
-pub fn build_router(state: AppState) -> Router {
+pub fn build_router(state: AppState, config: &AppConfig) -> Router {
     let router = Router::new()
         .route("/health", get(handlers::admin::health))
         .route("/api/auth/register", post(handlers::auth::register))
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/me", get(handlers::auth::me))
+        .route("/api/auth/csrf", get(handlers::auth::csrf_token))
         .route("/api/auth/refresh", post(handlers::auth::refresh))
         .route("/api/auth/logout", post(handlers::auth::logout))
         .route("/api/list_models", get(handlers::catalog::list_models))
         .route("/api/list_tools", get(handlers::catalog::list_tools))
         .route(
-            "/api/provider-settings",
-            get(handlers::auth::list_user_provider_settings)
-                .put(handlers::auth::upsert_user_provider_setting),
+            "/api/user-provider-api-keys",
+            get(handlers::auth::list_user_provider_api_keys)
+                .put(handlers::auth::upsert_user_provider_api_key),
         )
         .route(
             "/api/custom-models",
@@ -31,6 +33,7 @@ pub fn build_router(state: AppState) -> Router {
             "/api/custom-models/:model_config_id",
             axum::routing::delete(handlers::auth::delete_user_custom_model),
         )
+        .route("/api/media/*path", get(handlers::media::get_media))
         .route("/api/sessions", get(handlers::sessions::list_sessions))
         .route(
             "/api/sessions/:session_id",
@@ -45,14 +48,36 @@ pub fn build_router(state: AppState) -> Router {
             post(handlers::turns::interrupt_turn),
         )
         .route("/api/stream/:session_id", get(handlers::chat::stream))
-        .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::security::csrf::require_csrf,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::security::middleware::resolve_auth_context,
+        ));
 
-    let router = match &state.media_storage {
-        MediaStorageConfig::Local { root_dir, .. } => {
-            router.route_service("/media/*path", ServeDir::new(root_dir.clone()))
-        }
-        MediaStorageConfig::S3 { .. } => router,
+    let router = if config.cors_allowed_origins.is_empty() {
+        router
+    } else {
+        let allowed_origins = config
+            .cors_allowed_origins
+            .iter()
+            .filter_map(|origin| HeaderValue::from_str(origin).ok())
+            .collect::<Vec<_>>();
+
+        router.layer(
+            CorsLayer::new()
+                .allow_credentials(true)
+                .allow_origin(allowed_origins)
+                .allow_headers([
+                    header::AUTHORIZATION,
+                    header::CONTENT_TYPE,
+                    HeaderName::from_static("x-csrf-token"),
+                ])
+                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS]),
+        )
     };
 
     router.with_state(state)

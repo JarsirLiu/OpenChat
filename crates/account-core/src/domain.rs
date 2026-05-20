@@ -36,7 +36,7 @@ impl AuthSession {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AuthError {
     pub status_code: u16,
     pub message: String,
@@ -52,21 +52,17 @@ impl AuthError {
 }
 
 #[derive(Clone)]
-pub struct UserProviderSetting {
+pub struct UserProviderApiKey {
     pub provider_key: String,
-    pub base_url: String,
-    pub enabled: bool,
     pub has_api_key: bool,
     pub created_at: String,
     pub updated_at: String,
 }
 
 #[derive(Clone)]
-pub struct UpsertUserProviderSetting {
+pub struct UpsertUserProviderApiKey {
     pub provider_key: String,
-    pub base_url: String,
     pub api_key: Option<String>,
-    pub enabled: bool,
 }
 
 #[derive(Clone)]

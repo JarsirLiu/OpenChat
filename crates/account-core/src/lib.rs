@@ -4,17 +4,19 @@ mod custom_model_service;
 mod domain;
 mod model_provider_service;
 mod service;
+mod system_provider_registry;
 
-pub use auth_service::AuthService;
+pub use auth_service::{AuthService, ACCESS_TOKEN_TTL_MILLIS, REFRESH_TOKEN_TTL_MILLIS};
 pub use contracts::{
     AuthResponseDto, CreateUserCustomModelDto, LoginRequestDto, LogoutRequestDto,
-    RefreshRequestDto, RegisterRequestDto, UpsertUserProviderSettingDto, UserCustomModelDto,
-    UserDto, UserInfoDto, UserProviderSettingDto,
+    RefreshRequestDto, RegisterRequestDto, UpsertUserProviderApiKeyDto, UserCustomModelDto,
+    UserDto, UserInfoDto, UserProviderApiKeyDto,
 };
 pub use custom_model_service::CustomModelService;
 pub use domain::{
-    AuthError, AuthSession, AuthUser, CreateUserCustomModel, UpsertUserProviderSetting,
-    UserCustomModel, UserProviderSetting,
+    AuthError, AuthSession, AuthUser, CreateUserCustomModel, UpsertUserProviderApiKey,
+    UserCustomModel, UserProviderApiKey,
 };
-pub use model_provider_service::{ModelProviderService, ProviderRuntimeFallback};
+pub use model_provider_service::ModelProviderService;
 pub use service::AccountService;
+pub use system_provider_registry::{SystemProviderDefinition, SystemProviderRegistry};

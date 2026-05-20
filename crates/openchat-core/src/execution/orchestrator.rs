@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use futures_util::StreamExt;
-use openchat_infra::sqlite::{PersistedMessage, PersistedToolCall, SqliteChatStore};
+use openchat_infra::stores::{PersistedMessage, PersistedToolCall, ChatStore};
 use serde_json::{json, Value};
 use tokio::time::{timeout, Duration};
 
@@ -43,7 +43,7 @@ fn now_millis() -> u128 {
 
 #[derive(Clone)]
 pub struct OpenChatTurnExecutor<R> {
-    chat_store: Arc<SqliteChatStore>,
+    chat_store: Arc<ChatStore>,
     model_provider_runtime: ModelProviderRuntime<R>,
     tool_executor: ToolExecutor<R>,
     session_title_generator: SessionTitleGenerator<R>,
@@ -78,7 +78,7 @@ where
     R: TextModelAccessResolver + ImageModelAccessResolver + ToolAccessResolver + 'static,
 {
     pub fn new(
-        chat_store: Arc<SqliteChatStore>,
+        chat_store: Arc<ChatStore>,
         model_provider_runtime: ModelProviderRuntime<R>,
         tool_executor: ToolExecutor<R>,
     ) -> Self {
@@ -93,7 +93,7 @@ where
     }
 
     async fn execute_turn(
-        chat_store: Arc<SqliteChatStore>,
+        chat_store: Arc<ChatStore>,
         model_provider_runtime: ModelProviderRuntime<R>,
         tool_executor: ToolExecutor<R>,
         session_title_generator: SessionTitleGenerator<R>,
@@ -118,6 +118,7 @@ where
 
         let _ = chat_store
             .begin_turn(
+                plan.user_id.as_str(),
                 active_turn.turn_id(),
                 plan.session_id.as_str(),
                 plan.prompt.as_str(),
@@ -163,6 +164,7 @@ where
             &chat_store,
             PersistedMessage {
                 id: user_item_id.clone(),
+                user_id: plan.user_id.clone(),
                 session_id: plan.session_id.clone(),
                 turn_id: active_turn.turn_id().to_string(),
                 role: "user".into(),
@@ -195,6 +197,7 @@ where
             &chat_store,
             PersistedMessage {
                 id: assistant_item_id.clone(),
+                user_id: plan.user_id.clone(),
                 session_id: plan.session_id.clone(),
                 turn_id: active_turn.turn_id().to_string(),
                 role: "assistant".into(),
@@ -323,6 +326,7 @@ where
                                 &chat_store,
                                 PersistedMessage {
                                     id: reasoning_item_id.clone(),
+                                    user_id: plan.user_id.clone(),
                                     session_id: plan.session_id.clone(),
                                     turn_id: active_turn.turn_id().to_string(),
                                     role: "reasoning".into(),
@@ -354,6 +358,7 @@ where
                             &chat_store,
                             PersistedMessage {
                                 id: reasoning_item_id.clone(),
+                                user_id: plan.user_id.clone(),
                                 session_id: plan.session_id.clone(),
                                 turn_id: active_turn.turn_id().to_string(),
                                 role: "reasoning".into(),
@@ -383,6 +388,7 @@ where
                             &chat_store,
                             PersistedMessage {
                                 id: assistant_item_id.clone(),
+                                user_id: plan.user_id.clone(),
                                 session_id: plan.session_id.clone(),
                                 turn_id: active_turn.turn_id().to_string(),
                                 role: "assistant".into(),
@@ -426,6 +432,7 @@ where
                         let _ = chat_store
                             .upsert_tool_call(PersistedToolCall {
                                 id: tool_call_id,
+                                user_id: plan.user_id.clone(),
                                 session_id: plan.session_id.clone(),
                                 turn_id: active_turn.turn_id().to_string(),
                                 parent_item_id: Some(assistant_item_id.clone()),
@@ -463,6 +470,7 @@ where
                         let _ = chat_store
                             .upsert_tool_call(PersistedToolCall {
                                 id: tool_call_id,
+                                user_id: plan.user_id.clone(),
                                 session_id: plan.session_id.clone(),
                                 turn_id: active_turn.turn_id().to_string(),
                                 parent_item_id: Some(assistant_item_id.clone()),
@@ -526,11 +534,12 @@ where
 
                         pass_state.completed_tool_calls.push(completed_tool_call);
 
-                        let _ = upsert_message(
-                            &chat_store,
-                            PersistedMessage {
-                                id: assistant_item_id.clone(),
-                                session_id: plan.session_id.clone(),
+                            let _ = upsert_message(
+                                &chat_store,
+                                PersistedMessage {
+                                    id: assistant_item_id.clone(),
+                                    user_id: plan.user_id.clone(),
+                                    session_id: plan.session_id.clone(),
                                 turn_id: active_turn.turn_id().to_string(),
                                 role: "assistant".into(),
                                 status: "in_progress".into(),
@@ -635,6 +644,7 @@ where
                 &chat_store,
                 PersistedMessage {
                     id: reasoning_item_id.clone(),
+                    user_id: plan.user_id.clone(),
                     session_id: plan.session_id.clone(),
                     turn_id: active_turn.turn_id().to_string(),
                     role: "reasoning".into(),
@@ -651,6 +661,7 @@ where
             &chat_store,
             PersistedMessage {
                 id: assistant_item_id.clone(),
+                user_id: plan.user_id.clone(),
                 session_id: plan.session_id.clone(),
                 turn_id: active_turn.turn_id().to_string(),
                 role: "assistant".into(),
@@ -729,7 +740,7 @@ where
 }
 
 async fn fail_turn(
-    chat_store: &SqliteChatStore,
+    chat_store: &ChatStore,
     session_runtime: &SessionRuntime,
     active_turn: &ActiveTurnHandle,
     reason: TurnTerminalReason,
@@ -744,7 +755,7 @@ async fn fail_turn(
 }
 
 async fn interrupt_turn(
-    chat_store: &SqliteChatStore,
+    chat_store: &ChatStore,
     session_runtime: &SessionRuntime,
     active_turn: &ActiveTurnHandle,
     turn_started_at: &str,
@@ -762,7 +773,7 @@ async fn interrupt_turn(
 }
 
 async fn upsert_message(
-    chat_store: &SqliteChatStore,
+    chat_store: &ChatStore,
     message: PersistedMessage,
 ) -> anyhow::Result<()> {
     chat_store.upsert_message(message).await
@@ -785,7 +796,11 @@ fn build_user_content_json(text: &str, attachments: &[crate::TurnAttachment]) ->
 
     for attachment in attachments {
         if attachment.mime_type.starts_with("image/") {
-            parts.push(image_part(attachment.url.clone(), attachment.name.as_str()));
+            parts.push(image_part(
+                attachment.url.clone(),
+                attachment.name.as_str(),
+                Some(attachment.id.clone()),
+            ));
         }
     }
 
@@ -806,6 +821,7 @@ fn user_content_to_outbound_parts(
         if attachment.mime_type.starts_with("image/") {
             parts.push(OutboundContentPart::ImageUrl {
                 url: attachment.url.clone(),
+                media_id: Some(attachment.id.clone()),
             });
         }
     }
@@ -858,6 +874,7 @@ fn tool_result_to_outbound_parts(call: &CompletedToolCall) -> Vec<OutboundConten
         }
         parts.push(OutboundContentPart::ImageUrl {
             url: media.url.clone(),
+            media_id: media.object_key.clone(),
         });
     }
 
@@ -865,7 +882,7 @@ fn tool_result_to_outbound_parts(call: &CompletedToolCall) -> Vec<OutboundConten
 }
 
 async fn execute_tool_call<R>(
-    chat_store: &SqliteChatStore,
+    chat_store: &ChatStore,
     session_runtime: &SessionRuntime,
     tool_executor: &ToolExecutor<R>,
     plan: &TurnPlan,
@@ -960,7 +977,7 @@ where
 }
 
 async fn persist_completed_tool_call(
-    chat_store: &SqliteChatStore,
+    chat_store: &ChatStore,
     session_runtime: &SessionRuntime,
     plan: &TurnPlan,
     turn_id: &str,
@@ -996,6 +1013,7 @@ async fn persist_completed_tool_call(
     let _ = chat_store
         .upsert_tool_call(PersistedToolCall {
             id: completed.tool_call_id.clone(),
+            user_id: plan.user_id.clone(),
             session_id: plan.session_id.clone(),
             turn_id: turn_id.to_string(),
             parent_item_id: Some(assistant_item_id.to_string()),
@@ -1029,6 +1047,7 @@ mod tests {
             .map(|url| MediaAsset {
                 kind: "image".into(),
                 url: (*url).to_string(),
+                object_key: None,
                 mime_type: "image/png".into(),
                 size_bytes: 128,
             })
@@ -1060,11 +1079,11 @@ mod tests {
         assert!(matches!(parts[0], OutboundContentPart::Text { .. }));
         assert!(matches!(
             &parts[1],
-            OutboundContentPart::ImageUrl { url } if url == "https://example.com/generated.png"
+            OutboundContentPart::ImageUrl { url, .. } if url == "https://example.com/generated.png"
         ));
         assert!(matches!(
             &parts[2],
-            OutboundContentPart::ImageUrl { url } if url == "https://example.com/generated-2.png"
+            OutboundContentPart::ImageUrl { url, .. } if url == "https://example.com/generated-2.png"
         ));
     }
 
@@ -1078,3 +1097,4 @@ mod tests {
         assert!(!text.contains("https://example.com/generated.png"));
     }
 }
+

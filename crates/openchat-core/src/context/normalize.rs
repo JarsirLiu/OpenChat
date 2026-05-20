@@ -1,4 +1,4 @@
-use openchat_infra::sqlite::{PersistedSessionMessage, PersistedSessionToolCall};
+use openchat_infra::stores::{PersistedSessionMessage, PersistedSessionToolCall};
 use serde_json::Value;
 
 use crate::{parse_media_assets_json, MediaAsset};
@@ -61,7 +61,10 @@ fn normalize_content_parts(
 
         for media in tool_call_media(&tool_call) {
             if media.kind == "image" && !media.url.trim().is_empty() {
-                parts.push(OutboundContentPart::ImageUrl { url: media.url });
+                parts.push(OutboundContentPart::ImageUrl {
+                    url: media.url,
+                    media_id: media.object_key,
+                });
             }
         }
     }
@@ -90,6 +93,10 @@ fn value_to_outbound_content_parts(value: Value) -> Vec<OutboundContentPart> {
                 }),
                 "image" => Some(OutboundContentPart::ImageUrl {
                     url: part.get("url")?.as_str()?.to_string(),
+                    media_id: part
+                        .get("media_id")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
                 }),
                 _ => None,
             }
@@ -156,7 +163,7 @@ fn parse_result_json_text(raw: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use openchat_infra::sqlite::{PersistedSessionMessage, PersistedSessionToolCall};
+    use openchat_infra::stores::{PersistedSessionMessage, PersistedSessionToolCall};
     use serde_json::json;
 
     use super::normalize_session_history;
@@ -184,7 +191,7 @@ mod tests {
             result_json: Some("{\"kind\":\"image\",\"message\":\"ok\"}".to_string()),
             status: "completed".to_string(),
             media_json: Some(
-                "[{\"kind\":\"image\",\"url\":\"https://example.com/image.png\",\"mimeType\":\"image/png\",\"sizeBytes\":123},{\"kind\":\"image\",\"url\":\"https://example.com/image-2.png\",\"mimeType\":\"image/png\",\"sizeBytes\":456}]"
+                "[{\"kind\":\"image\",\"url\":\"https://example.com/image.png\",\"objectKey\":\"media/object-1.png\",\"mimeType\":\"image/png\",\"sizeBytes\":123},{\"kind\":\"image\",\"url\":\"https://example.com/image-2.png\",\"objectKey\":\"media/object-2.png\",\"mimeType\":\"image/png\",\"sizeBytes\":456}]"
                     .to_string(),
             ),
         }];
@@ -218,7 +225,7 @@ mod tests {
             result_json: None,
             status: "completed".to_string(),
             media_json: Some(
-                "[{\"kind\":\"image\",\"url\":\"https://example.com/image.png\",\"mimeType\":\"image/png\",\"sizeBytes\":123}]"
+                "[{\"kind\":\"image\",\"url\":\"https://example.com/image.png\",\"objectKey\":\"media/object-1.png\",\"mimeType\":\"image/png\",\"sizeBytes\":123}]"
                     .to_string(),
             ),
         }];
@@ -233,3 +240,4 @@ mod tests {
         assert!(!text.contains("https://example.com/image.png"));
     }
 }
+

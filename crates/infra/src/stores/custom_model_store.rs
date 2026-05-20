@@ -10,7 +10,7 @@ use rand::RngCore;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
 
-use super::db::DatabasePool;
+use crate::db::DatabasePool;
 
 fn now_millis_i64() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -43,12 +43,12 @@ pub struct CustomModelCreate {
 }
 
 #[derive(Clone)]
-pub struct SqliteCustomModelStore {
+pub struct CustomModelStore {
     pool: Arc<DatabasePool>,
     cipher_key: Arc<[u8; 32]>,
 }
 
-impl SqliteCustomModelStore {
+impl CustomModelStore {
     pub fn new(pool: Arc<DatabasePool>, secret: &str) -> Self {
         Self {
             pool,
@@ -61,7 +61,7 @@ impl SqliteCustomModelStore {
         user_id: &str,
     ) -> anyhow::Result<Vec<PersistedCustomModel>> {
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 let rows = sqlx::query(
                     r#"
                     SELECT model_config_id, model_name, model_type, base_url, api_key_ciphertext, created_at, updated_at
@@ -132,7 +132,7 @@ impl SqliteCustomModelStore {
         model_config_id: &str,
     ) -> anyhow::Result<Option<PersistedCustomModel>> {
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 let row = sqlx::query(
                     r#"
                     SELECT model_config_id, model_name, model_type, base_url, api_key_ciphertext, created_at, updated_at
@@ -199,7 +199,7 @@ impl SqliteCustomModelStore {
         let ciphertext = encrypt_secret(self.cipher_key.as_ref(), create.api_key.trim())?;
 
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query(
                     r#"
                     INSERT INTO user_custom_models
@@ -260,7 +260,7 @@ impl SqliteCustomModelStore {
         model_config_id: &str,
     ) -> anyhow::Result<bool> {
         let rows_affected = match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query(
                     r#"
                     DELETE FROM user_custom_models
@@ -334,3 +334,4 @@ fn decrypt_secret(key_bytes: &[u8; 32], encoded: &str) -> anyhow::Result<String>
         .map_err(|_| anyhow!("failed to decrypt custom model secret"))?;
     String::from_utf8(plaintext).context("custom model secret is not valid utf-8")
 }
+

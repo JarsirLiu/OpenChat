@@ -19,15 +19,17 @@ RUN sed -i "s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|
 COPY Cargo.toml Cargo.lock ./
 COPY apps/api-rs/Cargo.toml apps/api-rs/Cargo.toml
 COPY apps/worker-rs/Cargo.toml apps/worker-rs/Cargo.toml
+COPY crates/security-core/Cargo.toml crates/security-core/Cargo.toml
 COPY crates/account-core/Cargo.toml crates/account-core/Cargo.toml
 COPY crates/catalog-core/Cargo.toml crates/catalog-core/Cargo.toml
 COPY crates/infra/Cargo.toml crates/infra/Cargo.toml
 COPY crates/openchat-core/Cargo.toml crates/openchat-core/Cargo.toml
 
 # Create minimal sources so Cargo can fetch and cache dependencies before full source copy.
-RUN mkdir -p apps/api-rs/src apps/worker-rs/src crates/account-core/src crates/catalog-core/src crates/infra/src crates/openchat-core/src \
+RUN mkdir -p apps/api-rs/src apps/worker-rs/src crates/security-core/src crates/account-core/src crates/catalog-core/src crates/infra/src crates/openchat-core/src \
     && printf 'fn main() {}\n' > apps/api-rs/src/main.rs \
     && printf 'fn main() {}\n' > apps/worker-rs/src/main.rs \
+    && : > crates/security-core/src/lib.rs \
     && : > crates/account-core/src/lib.rs \
     && : > crates/catalog-core/src/lib.rs \
     && : > crates/infra/src/lib.rs \

@@ -1,21 +1,25 @@
 import type { CatalogTool, SessionPreference, SessionPreferenceMap } from './types'
 
-export const SESSION_STORAGE_KEY = 'openchat:session-id'
-const SESSION_PREFERENCES_STORAGE_KEY = 'openchat:session-preferences'
+const buildSessionStorageKey = (userId: string | null) =>
+  `openchat:session-id:${userId ?? 'anonymous'}`
+
+const buildSessionPreferencesStorageKey = (userId: string | null) =>
+  `openchat:session-preferences:${userId ?? 'anonymous'}`
 
 export const createSessionId = () => `sess_${crypto.randomUUID()}`
 
 export const imageToolKeyOf = (tool: Pick<CatalogTool, 'id' | 'model_config_id'>) =>
   `${tool.id}::${tool.model_config_id}`
 
-export const readStoredSessionId = () => window.localStorage.getItem(SESSION_STORAGE_KEY)
+export const readStoredSessionId = (userId: string | null) =>
+  window.localStorage.getItem(buildSessionStorageKey(userId))
 
-export const writeStoredSessionId = (sessionId: string) => {
-  window.localStorage.setItem(SESSION_STORAGE_KEY, sessionId)
+export const writeStoredSessionId = (userId: string | null, sessionId: string) => {
+  window.localStorage.setItem(buildSessionStorageKey(userId), sessionId)
 }
 
-export const readSessionPreferences = (): SessionPreferenceMap => {
-  const raw = window.localStorage.getItem(SESSION_PREFERENCES_STORAGE_KEY)
+export const readSessionPreferences = (userId: string | null): SessionPreferenceMap => {
+  const raw = window.localStorage.getItem(buildSessionPreferencesStorageKey(userId))
   if (!raw) {
     return {}
   }
@@ -27,33 +31,46 @@ export const readSessionPreferences = (): SessionPreferenceMap => {
   }
 }
 
-export const writeSessionPreferences = (preferences: SessionPreferenceMap) => {
-  window.localStorage.setItem(SESSION_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences))
+export const writeSessionPreferences = (
+  userId: string | null,
+  preferences: SessionPreferenceMap,
+) => {
+  window.localStorage.setItem(
+    buildSessionPreferencesStorageKey(userId),
+    JSON.stringify(preferences),
+  )
 }
 
-export const getInitialSessionPreference = (sessionId: string): SessionPreference =>
-  readSessionPreferences()[sessionId] ?? {
+export const getInitialSessionPreference = (
+  userId: string | null,
+  sessionId: string,
+): SessionPreference =>
+  readSessionPreferences(userId)[sessionId] ?? {
     textModelId: null,
     imageToolKey: null,
   }
 
-export const ensureSessionPreference = (sessionId: string) => {
-  const preferences = readSessionPreferences()
+export const ensureSessionPreference = (userId: string | null, sessionId: string) => {
+  const preferences = readSessionPreferences(userId)
   if (preferences[sessionId]) {
     return preferences[sessionId]
   }
 
-  const nextPreference = getInitialSessionPreference(sessionId)
-  writeSessionPreferences({
+  const nextPreference = getInitialSessionPreference(userId, sessionId)
+  writeSessionPreferences(userId, {
     ...preferences,
     [sessionId]: nextPreference,
   })
   return nextPreference
 }
 
-export const updateSessionPreference = (sessionId: string, nextPreference: SessionPreference) => {
-  const preferences = readSessionPreferences()
-  writeSessionPreferences({
+export const updateSessionPreference = (
+  userId: string | null,
+  sessionId: string,
+  nextPreference: SessionPreference,
+) => {
+  const preferences = readSessionPreferences(userId)
+  writeSessionPreferences(userId, {
     ...preferences,
     [sessionId]: nextPreference,
   })

@@ -27,10 +27,8 @@ export interface CatalogTool {
   unavailable_reason?: string | null
 }
 
-export interface UserProviderSetting {
+export interface UserProviderApiKey {
   provider_key: string
-  base_url: string
-  enabled: boolean
   has_api_key: boolean
   created_at: string
   updated_at: string

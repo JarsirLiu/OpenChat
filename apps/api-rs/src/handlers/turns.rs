@@ -5,15 +5,37 @@ use axum::{
     Json,
 };
 
-use crate::{http::turns::TurnInterruptAcceptedDto, state::AppState};
+use crate::{
+    http::turns::TurnInterruptAcceptedDto,
+    security::extractors::CurrentUser,
+    state::AppState,
+};
 
 pub async fn interrupt_turn(
     State(state): State<AppState>,
+    CurrentUser(auth): CurrentUser,
     Path((session_id, turn_id)): Path<(String, String)>,
 ) -> impl IntoResponse {
+    if let Err(error) = state
+        .resource_access
+        .authorize_session(&auth, openchat_security_core::Action::Update, session_id.as_str())
+        .await
+    {
+        let status = if error.message == "Session not found" {
+            StatusCode::NOT_FOUND
+        } else {
+            StatusCode::FORBIDDEN
+        };
+        return (
+            status,
+            Json(serde_json::json!({ "message": error.message })),
+        )
+            .into_response();
+    }
+
     match state
         .chat_service
-        .interrupt_turn(session_id.as_str(), turn_id.as_str())
+        .interrupt_turn(auth.user_id(), session_id.as_str(), turn_id.as_str())
         .await
     {
         Ok(true) => (

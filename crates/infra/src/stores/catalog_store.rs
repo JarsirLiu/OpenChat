@@ -4,7 +4,7 @@ use anyhow::Context;
 use serde::Deserialize;
 use sqlx::Row;
 
-use super::db::DatabasePool;
+use crate::db::DatabasePool;
 
 fn default_runtime_provider() -> String {
     "openai_compatible".to_string()
@@ -61,11 +61,11 @@ pub struct CatalogToolRecord {
 }
 
 #[derive(Clone)]
-pub struct SqliteCatalogStore {
+pub struct CatalogStore {
     pool: Arc<DatabasePool>,
 }
 
-impl SqliteCatalogStore {
+impl CatalogStore {
     pub fn new(pool: Arc<DatabasePool>) -> Self {
         Self { pool }
     }
@@ -88,7 +88,7 @@ impl SqliteCatalogStore {
             .collect();
 
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query("DELETE FROM catalog_models").execute(pool).await?;
                 sqlx::query("DELETE FROM catalog_tools").execute(pool).await?;
             }
@@ -101,7 +101,7 @@ impl SqliteCatalogStore {
         for model in config.models {
             let input_modalities = serde_json::to_string(&model.input_modalities)?;
             match self.pool.as_ref() {
-                DatabasePool::Sqlite(pool) => {
+                DatabasePool::Compat(pool) => {
                     sqlx::query(
                         r#"
                         INSERT INTO catalog_models
@@ -140,8 +140,8 @@ impl SqliteCatalogStore {
                     .bind(model.source)
                     .bind(model.model_type)
                     .bind(input_modalities)
-                    .bind(if model.official { 1_i32 } else { 0_i32 })
-                    .bind(if model.custom { 1_i32 } else { 0_i32 })
+                    .bind(model.official)
+                    .bind(model.custom)
                     .execute(pool)
                     .await?;
                 }
@@ -150,7 +150,7 @@ impl SqliteCatalogStore {
 
         for tool in config.tools {
             match self.pool.as_ref() {
-                DatabasePool::Sqlite(pool) => {
+                DatabasePool::Compat(pool) => {
                     sqlx::query(
                         r#"
                         INSERT INTO catalog_tools
@@ -198,7 +198,7 @@ impl SqliteCatalogStore {
 
     pub async fn list_models(&self) -> anyhow::Result<Vec<CatalogModelRecord>> {
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 let rows = sqlx::query(
                     r#"
                     SELECT model_config_id, provider, runtime_provider, display_provider, model, display_name, source, model_type, input_modalities, official, custom
@@ -255,8 +255,8 @@ impl SqliteCatalogStore {
                             &row.get::<String, _>("input_modalities"),
                         )
                         .unwrap_or_else(|_| vec!["text".to_string()]),
-                        official: row.get::<i32, _>("official") != 0,
-                        custom: row.get::<i32, _>("custom") != 0,
+                        official: row.get::<bool, _>("official"),
+                        custom: row.get::<bool, _>("custom"),
                     })
                     .collect())
             }
@@ -265,7 +265,7 @@ impl SqliteCatalogStore {
 
     pub async fn list_tools(&self) -> anyhow::Result<Vec<CatalogToolRecord>> {
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 let rows = sqlx::query(
                     r#"
                     SELECT model_config_id, model, id, provider, runtime_provider, display_provider, source, tool_type, display_name
@@ -320,3 +320,4 @@ impl SqliteCatalogStore {
         }
     }
 }
+

@@ -1,9 +1,9 @@
-use axum::{extract::State, http::HeaderMap, response::IntoResponse, Json};
+use axum::{extract::State, response::IntoResponse, Json};
 use openchat_catalog_core::CatalogModel;
 
 use crate::{
-    handlers::auth::require_auth_user,
     http::catalog::{CatalogModelDto, CatalogToolDto},
+    security::extractors::CurrentUser,
     state::AppState,
 };
 
@@ -30,18 +30,16 @@ fn build_model_dto_with_access(
     dto
 }
 
-pub async fn list_models(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
-    let user = match require_auth_user(&state, &headers).await {
-        Ok(user) => user,
-        Err(response) => return response,
-    };
-
+pub async fn list_models(
+    State(state): State<AppState>,
+    CurrentUser(auth): CurrentUser,
+) -> impl IntoResponse {
     let mut model_dtos = Vec::new();
     for model in state.catalog_service.list_models() {
         let access = state
             .account_service
             .resolve_text_access(
-                user.id.as_str(),
+                auth.user_id(),
                 &openchat_core::TurnModelRef {
                     runtime_provider: model.runtime_provider.clone(),
                     model_config_id: model.model_config_id.clone(),
@@ -59,7 +57,7 @@ pub async fn list_models(State(state): State<AppState>, headers: HeaderMap) -> i
 
     let custom_models = match state
         .account_service
-        .list_user_custom_models(user.id.as_str())
+        .list_user_custom_models(auth.user_id())
         .await
     {
         Ok(items) => items,
@@ -98,7 +96,7 @@ pub async fn list_models(State(state): State<AppState>, headers: HeaderMap) -> i
         let access = state
             .account_service
             .resolve_text_access(
-                user.id.as_str(),
+                auth.user_id(),
                 &openchat_core::TurnModelRef {
                     runtime_provider: catalog_model.runtime_provider.clone(),
                     model_config_id: catalog_model.model_config_id.clone(),
@@ -117,11 +115,6 @@ pub async fn list_models(State(state): State<AppState>, headers: HeaderMap) -> i
     Json(model_dtos).into_response()
 }
 
-pub async fn list_tools(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
-    let _user = match require_auth_user(&state, &headers).await {
-        Ok(user) => user,
-        Err(response) => return response,
-    };
-
+pub async fn list_tools(_current_user: CurrentUser) -> impl IntoResponse {
     Json(Vec::<CatalogToolDto>::new()).into_response()
 }

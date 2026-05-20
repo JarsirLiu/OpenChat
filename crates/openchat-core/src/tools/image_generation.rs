@@ -203,6 +203,8 @@ where
                     ),
                     generated.bytes,
                     generated.mime_type.as_str(),
+                    invocation.user_id.as_str(),
+                    Some(invocation.session_id.as_str()),
                 )
                 .await?;
             stored_images.push(stored);
@@ -212,7 +214,8 @@ where
             .iter()
             .map(|stored| MediaAsset {
                 kind: "image".to_string(),
-                url: stored.public_url.clone(),
+                url: stored.browser_url.clone(),
+                object_key: Some(stored.key.clone()),
                 mime_type: stored.content_type.clone(),
                 size_bytes: stored.size_bytes,
             })

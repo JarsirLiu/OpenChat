@@ -4,7 +4,7 @@ import { resolveModelIconKey } from './modelIcon'
 import { imageToolKeyOf, readSessionPreferences } from './sessionPreferences'
 import type { CatalogModel, CatalogTool, ModelMenuItem } from './types'
 
-const DEFAULT_TEXT_MODEL_ID = 'openchat:gpt-5.4-mini'
+const DEFAULT_TEXT_MODEL_ID = 'openchat:gpt-5.4'
 
 const compareTextModels = (left: CatalogModel, right: CatalogModel) => {
   const leftIsGpt = left.model.toLowerCase().startsWith('gpt')
@@ -33,16 +33,16 @@ export function useModelCatalog({
   const [textModels, setTextModels] = useState<CatalogModel[]>([])
   const [imageTools, setImageTools] = useState<CatalogTool[]>([])
   const [selectedTextModelId, setSelectedTextModelId] = useState<string | null>(
-    readSessionPreferences()[sessionId]?.textModelId ?? null,
+    readSessionPreferences(currentUserId)[sessionId]?.textModelId ?? null,
   )
   const [selectedImageToolKey, setSelectedImageToolKey] = useState<string | null>(
-    readSessionPreferences()[sessionId]?.imageToolKey ?? null,
+    readSessionPreferences(currentUserId)[sessionId]?.imageToolKey ?? null,
   )
 
   useEffect(() => {
-    setSelectedTextModelId(readSessionPreferences()[sessionId]?.textModelId ?? null)
-    setSelectedImageToolKey(readSessionPreferences()[sessionId]?.imageToolKey ?? null)
-  }, [sessionId])
+    setSelectedTextModelId(readSessionPreferences(currentUserId)[sessionId]?.textModelId ?? null)
+    setSelectedImageToolKey(readSessionPreferences(currentUserId)[sessionId]?.imageToolKey ?? null)
+  }, [currentUserId, sessionId])
 
   const loadCatalog = async () => {
     if (!currentUserId) {
@@ -81,7 +81,8 @@ export function useModelCatalog({
       setImageTools(nextImageTools)
 
       setSelectedTextModelId((current) => {
-        const sessionPreference = readSessionPreferences()[sessionId]?.textModelId ?? null
+        const sessionPreference =
+          readSessionPreferences(currentUserId)[sessionId]?.textModelId ?? null
         const currentId =
           current ||
           sessionPreference ||
@@ -104,7 +105,8 @@ export function useModelCatalog({
       })
 
       setSelectedImageToolKey((current) => {
-        const sessionPreference = readSessionPreferences()[sessionId]?.imageToolKey ?? null
+        const sessionPreference =
+          readSessionPreferences(currentUserId)[sessionId]?.imageToolKey ?? null
         const envKey =
           import.meta.env.VITE_DEFAULT_IMAGE_TOOL_ID &&
           import.meta.env.VITE_DEFAULT_IMAGE_TOOL_CONFIG_ID

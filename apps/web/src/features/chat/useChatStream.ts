@@ -1,4 +1,5 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
+import { fetchEventSource } from '@microsoft/fetch-event-source'
 import type { ChatMessage, ChatStreamEvent, ItemStatus, MessageContentPart } from '@openchat/protocol'
 import { normalizeStreamEvent } from '@openchat/protocol'
 import { authenticatedFetch } from '../../lib/auth'
@@ -6,6 +7,7 @@ import type { SessionListItem } from './useSessions'
 
 interface UseChatStreamParams {
   sessionId: string
+  enabled: boolean
   onHydrate: (messages: ChatMessage[]) => void
   onHydrateSession: (session: SessionListItem | null) => void
   onEvent: (event: ChatStreamEvent) => void
@@ -185,6 +187,7 @@ const normalizeSession = (value: SessionDetailResponse['session']): SessionListI
 
 export function useChatStream({
   sessionId,
+  enabled,
   onHydrate,
   onHydrateSession,
   onEvent,
@@ -192,7 +195,6 @@ export function useChatStream({
   const [streamState, setStreamState] = useState<'connecting' | 'connected' | 'disconnected'>(
     'connecting',
   )
-  const eventSourceRef = useRef<EventSource | null>(null)
   const handleEvent = useEffectEvent((event: ChatStreamEvent) => {
     onEvent(event)
   })
@@ -204,39 +206,16 @@ export function useChatStream({
   })
 
   useEffect(() => {
-    const eventSource = new EventSource(`/api/stream/${sessionId}`)
-    eventSourceRef.current = eventSource
+    if (!enabled) {
+      setStreamState('disconnected')
+      return
+    }
+
     setStreamState('connecting')
     let active = true
     let bootstrapping = true
     const queuedEvents: ChatStreamEvent[] = []
-
-    eventSource.onopen = () => {
-      setStreamState('connected')
-    }
-
-    eventSource.onerror = () => {
-      setStreamState('disconnected')
-    }
-
-    eventSource.addEventListener('stream_event', (message) => {
-      if (!(message instanceof MessageEvent)) {
-        return
-      }
-
-      const payload = JSON.parse(message.data) as unknown
-      const event = normalizeStreamEvent(payload)
-      if (!event || event.sessionId !== sessionId) {
-        return
-      }
-
-      if (bootstrapping) {
-        queuedEvents.push(event)
-        return
-      }
-
-      handleEvent(event)
-    })
+    const abortController = new AbortController()
 
     void (async () => {
       try {
@@ -266,13 +245,62 @@ export function useChatStream({
       }
     })()
 
+    void fetchEventSource(`/api/stream/${sessionId}`, {
+      signal: abortController.signal,
+      openWhenHidden: true,
+      fetch: (input, init) =>
+        authenticatedFetch(
+          input instanceof Request ? input.url : typeof input === 'string' ? input : input.toString(),
+          init,
+        ),
+      async onopen(response) {
+        if (!response.ok) {
+          throw new Error(`Unexpected stream response: ${response.status}`)
+        }
+
+        setStreamState('connected')
+      },
+      onmessage(message) {
+        if (message.event !== 'stream_event') {
+          return
+        }
+
+        const payload = JSON.parse(message.data) as unknown
+        const event = normalizeStreamEvent(payload)
+        if (!event || event.sessionId !== sessionId) {
+          return
+        }
+
+        if (bootstrapping) {
+          queuedEvents.push(event)
+          return
+        }
+
+        handleEvent(event)
+      },
+      onclose() {
+        setStreamState('disconnected')
+      },
+      onerror(error) {
+        if (abortController.signal.aborted) {
+          throw error
+        }
+
+        setStreamState('disconnected')
+        return 1000
+      },
+    }).catch(() => {
+      if (!abortController.signal.aborted) {
+        setStreamState('disconnected')
+      }
+    })
+
     return () => {
       active = false
       bootstrapping = false
-      eventSource.close()
-      eventSourceRef.current = null
+      abortController.abort()
     }
-  }, [sessionId])
+  }, [enabled, sessionId])
 
   return {
     streamState,

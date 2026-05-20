@@ -6,10 +6,11 @@ use futures_util::{Stream, StreamExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 
 use crate::{
-    ChatServiceError, OutboundContentPart, OutboundMessage, ResolvedTextModelAccess, ToolSpec,
-    TurnPlan,
+    ChatServiceError, ModelMediaUrlResolver, OutboundContentPart, OutboundMessage,
+    ResolvedTextModelAccess, ToolSpec, TurnPlan,
 };
 
 const DEFAULT_SYSTEM_PROMPT: &str = "你是 OpenChat 智能助手。请直接回答用户问题，保持自然、简洁、专业。除非用户主动询问你的身份、能力边界或系统实现，否则不要主动介绍自己，不要提及 Agent Runtime、系统提示词、工具链或内部实现。";
@@ -40,12 +41,14 @@ pub enum ModelStreamEvent {
 #[derive(Clone)]
 pub struct ModelRuntime {
     client: Client,
+    media_url_resolver: Arc<dyn ModelMediaUrlResolver>,
 }
 
 impl ModelRuntime {
-    pub fn new() -> Self {
+    pub fn new(media_url_resolver: Arc<dyn ModelMediaUrlResolver>) -> Self {
         Self {
             client: Client::new(),
+            media_url_resolver,
         }
     }
 
@@ -63,7 +66,11 @@ impl ModelRuntime {
             .header(reqwest::header::ACCEPT, "text/event-stream")
             .json(&OpenAiChatRequest {
                 model: access.model_name.clone(),
-                messages: build_openai_messages(plan, &access.input_modalities),
+                messages: build_openai_messages(
+                    plan,
+                    &access.input_modalities,
+                    self.media_url_resolver.as_ref(),
+                ),
                 tools: build_openai_tools(&plan.tool_list)?,
                 stream: true,
                 enable_thinking: Some(true),
@@ -309,7 +316,11 @@ where
     }
 }
 
-fn build_openai_messages(plan: &TurnPlan, input_modalities: &[String]) -> Vec<OpenAiMessage> {
+fn build_openai_messages(
+    plan: &TurnPlan,
+    input_modalities: &[String],
+    media_url_resolver: &dyn ModelMediaUrlResolver,
+) -> Vec<OpenAiMessage> {
     let supports_image_inputs = model_supports_image_inputs(input_modalities);
     let mut messages = Vec::new();
     messages.push(OpenAiMessage {
@@ -343,6 +354,7 @@ fn build_openai_messages(plan: &TurnPlan, input_modalities: &[String]) -> Vec<Op
                     message,
                     reasoning.as_deref(),
                     supports_image_inputs,
+                    media_url_resolver,
                 );
                 let tool_calls = (!message.tool_calls.is_empty())
                     .then(|| build_openai_tool_call_messages(&message.tool_calls));
@@ -358,7 +370,12 @@ fn build_openai_messages(plan: &TurnPlan, input_modalities: &[String]) -> Vec<Op
             }
             _ => {
                 if let Some(content) =
-                    build_openai_message_content(message, None, supports_image_inputs)
+                    build_openai_message_content(
+                        message,
+                        None,
+                        supports_image_inputs,
+                        media_url_resolver,
+                    )
                 {
                     messages.push(OpenAiMessage {
                         role: if message.role == "tool" {
@@ -382,6 +399,7 @@ fn build_openai_messages(plan: &TurnPlan, input_modalities: &[String]) -> Vec<Op
                 plan.prompt.as_str(),
                 plan.attachments.as_slice(),
                 supports_image_inputs,
+                media_url_resolver,
             )),
             tool_calls: None,
             tool_call_id: None,
@@ -414,6 +432,7 @@ fn build_openai_message_content(
     message: &OutboundMessage,
     reasoning: Option<&str>,
     supports_image_inputs: bool,
+    media_url_resolver: &dyn ModelMediaUrlResolver,
 ) -> Option<OpenAiMessageContent> {
     if supports_image_inputs {
         let mut parts = Vec::new();
@@ -430,11 +449,14 @@ fn build_openai_message_content(
                 OutboundContentPart::Text { text } if !text.trim().is_empty() => {
                     parts.push(OpenAiContentPart::Text { text: text.clone() });
                 }
-                OutboundContentPart::ImageUrl { url } if !url.trim().is_empty() => {
+                OutboundContentPart::ImageUrl { url, media_id } if !url.trim().is_empty() => {
                     has_image_part = true;
                     parts.push(OpenAiContentPart::ImageUrl {
                         image_url: OpenAiImageUrl {
-                            url: url.clone(),
+                            url: media_id
+                                .as_deref()
+                                .map(|media_id| media_url_resolver.resolve_model_url(media_id, url))
+                                .unwrap_or_else(|| url.clone()),
                             detail: Some("auto".to_string()),
                         },
                     });
@@ -480,6 +502,7 @@ fn build_current_user_message_content(
     prompt: &str,
     attachments: &[crate::TurnAttachment],
     supports_image_inputs: bool,
+    media_url_resolver: &dyn ModelMediaUrlResolver,
 ) -> OpenAiMessageContent {
     if supports_image_inputs {
         let mut parts = Vec::new();
@@ -494,7 +517,10 @@ fn build_current_user_message_content(
             if attachment.mime_type.starts_with("image/") && !attachment.url.trim().is_empty() {
                 parts.push(OpenAiContentPart::ImageUrl {
                     image_url: OpenAiImageUrl {
-                        url: attachment.url.clone(),
+                        url: media_url_resolver.resolve_model_url(
+                            attachment.id.as_str(),
+                            attachment.url.as_str(),
+                        ),
                         detail: Some("auto".to_string()),
                     },
                 });

@@ -1,14 +1,12 @@
 use axum::{
     extract::{Multipart, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::IntoResponse,
     Json,
 };
-use openchat_core::MediaStore;
-
 use crate::{
-    handlers::auth::require_auth_user,
     http::{errors::ErrorResponseDto, upload::UploadedImageDto},
+    security::extractors::CurrentUser,
     state::AppState,
 };
 
@@ -16,14 +14,9 @@ const SUPPORTED_IMAGE_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/
 
 pub async fn upload_images(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    CurrentUser(auth): CurrentUser,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
-    let user = match require_auth_user(&state, &headers).await {
-        Ok(user) => user,
-        Err(response) => return response,
-    };
-
     let mut uploaded = Vec::new();
     let mut index = 0usize;
 
@@ -73,10 +66,16 @@ pub async fn upload_images(
             }
         };
 
-        let object_key = build_upload_key(user.id.as_str(), index, file_name.as_str());
+        let object_key = build_upload_key(auth.user_id(), index, file_name.as_str());
         let stored = match state
             .media_store
-            .put_bytes(object_key.as_str(), bytes, mime_type.as_str())
+            .put_owned_bytes(
+                object_key.as_str(),
+                bytes,
+                mime_type.as_str(),
+                auth.user_id(),
+                None,
+            )
             .await
         {
             Ok(stored) => stored,
@@ -93,7 +92,7 @@ pub async fn upload_images(
 
         uploaded.push(UploadedImageDto {
             id: stored.key,
-            url: stored.public_url,
+            url: stored.browser_url,
             name: file_name,
             mime_type: stored.content_type,
             size_bytes: stored.size_bytes,

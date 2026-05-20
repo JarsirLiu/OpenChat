@@ -1,0 +1,13 @@
+[package]
+name = "openchat-security-core"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "openchat_security_core"
+path = "src/lib.rs"
+
+[dependencies]
+base64 = "0.22"
+hmac = "0.12"
+sha2 = "0.10"

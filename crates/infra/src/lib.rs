@@ -1,2 +1,3 @@
-pub mod sqlite;
+pub mod db;
 pub mod storage;
+pub mod stores;

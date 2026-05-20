@@ -1,18 +1,29 @@
 use std::sync::Arc;
+use std::collections::HashSet;
 
 use openchat_core::ChatServiceError;
-use openchat_infra::sqlite::{CustomModelCreate, SqliteCustomModelStore};
+use openchat_infra::stores::{CustomModelCreate, CustomModelStore};
 
 use crate::{CreateUserCustomModel, UserCustomModel};
 
 #[derive(Clone)]
 pub struct CustomModelService {
-    store: Arc<SqliteCustomModelStore>,
+    store: Arc<CustomModelStore>,
+    reserved_model_names: HashSet<String>,
 }
 
 impl CustomModelService {
-    pub fn new(store: Arc<SqliteCustomModelStore>) -> Self {
-        Self { store }
+    pub fn new(
+        store: Arc<CustomModelStore>,
+        reserved_model_names: impl IntoIterator<Item = String>,
+    ) -> Self {
+        Self {
+            store,
+            reserved_model_names: reserved_model_names
+                .into_iter()
+                .map(|name| normalize_reserved_name(name.as_str()))
+                .collect(),
+        }
     }
 
     pub async fn list_user_models(
@@ -25,6 +36,7 @@ impl CustomModelService {
             .map(|items| {
                 items
                     .into_iter()
+                    .filter(|item| !self.is_reserved_model_name(item.model_name.as_str()))
                     .map(|item| UserCustomModel {
                         model_config_id: item.model_config_id,
                         model_name: item.model_name,
@@ -49,6 +61,7 @@ impl CustomModelService {
             create.model_type.as_str(),
             create.base_url.as_str(),
             create.api_key.as_str(),
+            &self.reserved_model_names,
         )?;
         let model_config_id = build_custom_model_config_id(create.model_name.as_str());
 
@@ -125,11 +138,25 @@ fn validate_custom_model(
     model_type: &str,
     base_url: &str,
     api_key: &str,
+    reserved_model_names: &HashSet<String>,
 ) -> Result<(), ChatServiceError> {
-    if model_name.trim().is_empty() {
+    let normalized_model_name = normalize_reserved_name(model_name);
+    if normalized_model_name.is_empty() {
         return Err(ChatServiceError::new(
             400,
             "A custom model name is required",
+        ));
+    }
+    if normalized_model_name.starts_with("custom:") || normalized_model_name.starts_with("openchat:") {
+        return Err(ChatServiceError::new(
+            400,
+            "Custom model names cannot use reserved prefixes",
+        ));
+    }
+    if reserved_model_names.contains(&normalized_model_name) {
+        return Err(ChatServiceError::new(
+            400,
+            "Custom model names cannot duplicate predefined models",
         ));
     }
     if !matches!(model_type, "text" | "multimodal") {
@@ -156,6 +183,13 @@ fn validate_custom_model(
     Ok(())
 }
 
+impl CustomModelService {
+    fn is_reserved_model_name(&self, model_name: &str) -> bool {
+        self.reserved_model_names
+            .contains(&normalize_reserved_name(model_name))
+    }
+}
+
 fn build_custom_model_config_id(model_name: &str) -> String {
     let slug = model_name
         .trim()
@@ -176,6 +210,33 @@ fn build_custom_model_config_id(model_name: &str) -> String {
     format!("custom:model:{slug}")
 }
 
+fn normalize_reserved_name(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+
 fn internal_error(error: anyhow::Error) -> ChatServiceError {
     ChatServiceError::new(500, error.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::validate_custom_model;
+
+    #[test]
+    fn rejects_predefined_model_names_for_custom_models() {
+        let reserved = HashSet::from_iter(["gpt-5.4".to_string(), "openchat:gpt-5.4".to_string()]);
+        let error = validate_custom_model(
+            "gpt-5.4",
+            "text",
+            "https://example.com/v1",
+            "key",
+            &reserved,
+        )
+        .expect_err("predefined names should be rejected");
+
+        assert!(error.message.contains("duplicate predefined models"));
+    }
+}
+

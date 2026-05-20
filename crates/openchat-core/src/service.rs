@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use openchat_infra::sqlite::{PersistedSession, SqliteChatStore};
+use openchat_infra::stores::{PersistedSession, ChatStore};
 use tokio::sync::broadcast;
 
 use crate::{
@@ -23,7 +23,7 @@ pub trait TurnBuilder: Send + Sync {
 pub struct ChatService {
     session_store: Arc<InMemorySessionStore>,
     active_turns: Arc<ActiveTurnRegistry>,
-    chat_store: Arc<SqliteChatStore>,
+    chat_store: Arc<ChatStore>,
     turn_builder: Arc<dyn TurnBuilder>,
     runtime: Arc<dyn TurnRunner>,
 }
@@ -41,7 +41,7 @@ impl ChatService {
     pub fn new(
         session_store: Arc<InMemorySessionStore>,
         active_turns: Arc<ActiveTurnRegistry>,
-        chat_store: Arc<SqliteChatStore>,
+        chat_store: Arc<ChatStore>,
         turn_builder: Arc<dyn TurnBuilder>,
         runtime: Arc<dyn TurnRunner>,
     ) -> Self {
@@ -55,15 +55,15 @@ impl ChatService {
     }
 
     pub async fn start_turn(&self, request: ChatRequest) -> Result<TurnAccepted, ChatServiceError> {
+        self.chat_store
+            .ensure_session(request.user_id.as_str(), request.session_id.as_str())
+            .await
+            .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
         let context = self
-            .load_session_history(request.session_id.as_str())
+            .load_session_history(request.user_id.as_str(), request.session_id.as_str())
             .await?;
         let plan = self.turn_builder.build_turn(request, context)?;
         let session_id = plan.session_id.clone();
-        self.chat_store
-            .ensure_session(session_id.as_str())
-            .await
-            .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
         let session_runtime = self
             .session_store
             .session_runtime(session_id.as_str())
@@ -85,49 +85,72 @@ impl ChatService {
 
     pub async fn interrupt_turn(
         &self,
+        user_id: &str,
         session_id: &str,
         turn_id: &str,
     ) -> Result<bool, ChatServiceError> {
+        if self
+            .chat_store
+            .get_session(user_id, session_id)
+            .await
+            .map_err(|error| ChatServiceError::new(500, error.to_string()))?
+            .is_none()
+        {
+            return Ok(false);
+        }
+
         if self.active_turns.interrupt(turn_id).await {
             return Ok(true);
         }
 
         self.chat_store
-            .interrupt_running_turn(session_id, turn_id)
+            .interrupt_running_turn(user_id, session_id, turn_id)
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))
     }
 
-    pub async fn subscribe(&self, session_id: &str) -> broadcast::Receiver<StreamEventPayload> {
-        self.session_store
+    pub async fn subscribe(
+        &self,
+        user_id: &str,
+        session_id: &str,
+    ) -> Result<broadcast::Receiver<StreamEventPayload>, ChatServiceError> {
+        if self.get_session(user_id, session_id).await?.is_none() {
+            return Err(ChatServiceError::new(404, "Session not found".to_string()));
+        }
+
+        let receiver = self
+            .session_store
             .session_runtime(session_id)
             .await
             .sender
-            .subscribe()
+            .subscribe();
+
+        Ok(receiver)
     }
 
-    pub async fn list_sessions(&self) -> Result<Vec<PersistedSession>, ChatServiceError> {
+    pub async fn list_sessions(&self, user_id: &str) -> Result<Vec<PersistedSession>, ChatServiceError> {
         self.chat_store
-            .list_sessions()
+            .list_sessions(user_id)
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))
     }
 
     pub async fn get_session(
         &self,
+        user_id: &str,
         session_id: &str,
     ) -> Result<Option<PersistedSession>, ChatServiceError> {
-        self.reconcile_session_runtime_state(session_id).await?;
+        self.reconcile_session_runtime_state(user_id, session_id).await?;
         self.chat_store
-            .get_session(session_id)
+            .get_session(user_id, session_id)
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))
     }
 
-    pub async fn delete_session(&self, session_id: &str) -> Result<bool, ChatServiceError> {
+    pub async fn delete_session(&self, user_id: &str, session_id: &str) -> Result<bool, ChatServiceError> {
         let deleted = self
             .chat_store
-            .delete_session(session_id)
+            .delete_session(user_id, session_id)
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
 
@@ -140,29 +163,35 @@ impl ChatService {
 
     pub async fn rename_session(
         &self,
+        user_id: &str,
         session_id: &str,
         title: &str,
     ) -> Result<Option<PersistedSession>, ChatServiceError> {
         self.chat_store
-            .update_session_title(session_id, title)
+            .update_session_title(user_id, session_id, title)
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))
     }
 
     pub async fn session_messages_snapshot(
         &self,
+        user_id: &str,
         session_id: &str,
     ) -> Result<Vec<MessageSnapshotDto>, ChatServiceError> {
-        self.reconcile_session_runtime_state(session_id).await?;
+        if self.get_session(user_id, session_id).await?.is_none() {
+            return Err(ChatServiceError::new(404, "Session not found".to_string()));
+        }
+
+        self.reconcile_session_runtime_state(user_id, session_id).await?;
 
         let messages = self
             .chat_store
-            .list_session_messages(session_id)
+            .list_session_messages(user_id, session_id)
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
         let tool_calls = self
             .chat_store
-            .list_session_tool_calls(session_id)
+            .list_session_tool_calls(user_id, session_id)
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
 
@@ -222,18 +251,23 @@ impl ChatService {
 
     async fn load_session_history(
         &self,
+        user_id: &str,
         session_id: &str,
     ) -> Result<SessionContext, ChatServiceError> {
-        self.reconcile_session_runtime_state(session_id).await?;
+        if self.get_session(user_id, session_id).await?.is_none() {
+            return Err(ChatServiceError::new(404, "Session not found".to_string()));
+        }
+
+        self.reconcile_session_runtime_state(user_id, session_id).await?;
 
         let messages = self
             .chat_store
-            .list_session_messages(session_id)
+            .list_session_messages(user_id, session_id)
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
         let tool_calls = self
             .chat_store
-            .list_session_tool_calls(session_id)
+            .list_session_tool_calls(user_id, session_id)
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
 
@@ -244,12 +278,14 @@ impl ChatService {
 
     async fn reconcile_session_runtime_state(
         &self,
+        user_id: &str,
         session_id: &str,
     ) -> Result<(), ChatServiceError> {
         let active_turn_ids = self.active_turns.active_turn_ids_for_session(session_id).await;
         self.chat_store
-            .reconcile_session_runtime_state(session_id, active_turn_ids.as_slice())
+            .reconcile_session_runtime_state(user_id, session_id, active_turn_ids.as_slice())
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))
     }
 }
+

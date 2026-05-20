@@ -17,6 +17,14 @@ pub struct StoredObject {
     pub size_bytes: usize,
 }
 
+#[derive(Clone, Debug)]
+pub struct RetrievedObject {
+    pub key: String,
+    pub bytes: Vec<u8>,
+    pub content_type: String,
+    pub size_bytes: usize,
+}
+
 #[async_trait]
 pub trait ObjectStore: Send + Sync {
     async fn put_bytes(
@@ -25,6 +33,8 @@ pub trait ObjectStore: Send + Sync {
         bytes: Vec<u8>,
         content_type: &str,
     ) -> Result<StoredObject>;
+
+    async fn get_bytes(&self, key: &str) -> Result<Option<RetrievedObject>>;
 }
 
 pub type DynObjectStore = Arc<dyn ObjectStore>;

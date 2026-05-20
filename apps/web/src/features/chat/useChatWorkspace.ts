@@ -45,15 +45,15 @@ const runtimeReducer = (
   }
 }
 
-const getInitialSessionId = () => readStoredSessionId() ?? createSessionId()
-
 interface UseChatWorkspaceParams {
   currentUser: AuthUser
   onUnauthorized: () => void
 }
 
 export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspaceParams) {
-  const [sessionId, setSessionId] = useState(getInitialSessionId)
+  const [sessionId, setSessionId] = useState(
+    () => readStoredSessionId(currentUser.id) ?? createSessionId(),
+  )
   const [runtimeState, dispatch] = useReducer(
     runtimeReducer,
     undefined,
@@ -65,14 +65,18 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
   const [requestPending, setRequestPending] = useState(false)
 
   useEffect(() => {
-    ensureSessionPreference(sessionId)
-    writeStoredSessionId(sessionId)
+    ensureSessionPreference(currentUser.id, sessionId)
+    writeStoredSessionId(currentUser.id, sessionId)
     dispatch({ type: 'reset' })
     setInput('')
     setAttachments([])
     setRequestError(null)
     setRequestPending(false)
-  }, [sessionId])
+  }, [currentUser.id, sessionId])
+
+  useEffect(() => {
+    setSessionId(readStoredSessionId(currentUser.id) ?? createSessionId())
+  }, [currentUser.id])
 
   useEffect(() => {
     if (!requestError) {
@@ -150,18 +154,19 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
 
   useChatStream({
     sessionId,
+    enabled: Boolean(currentSession),
     onHydrate: handleHydrate,
     onHydrateSession: handleHydrateSession,
     onEvent: handleStreamEvent,
   })
 
   useEffect(() => {
-    const storedPreferences = ensureSessionPreference(sessionId)
-    updateSessionPreference(sessionId, {
+    const storedPreferences = ensureSessionPreference(currentUser.id, sessionId)
+    updateSessionPreference(currentUser.id, sessionId, {
       textModelId: selectedTextModelId ?? storedPreferences.textModelId,
       imageToolKey: selectedImageToolKey ?? storedPreferences.imageToolKey,
     })
-  }, [selectedImageToolKey, selectedTextModelId, sessionId])
+  }, [currentUser.id, selectedImageToolKey, selectedTextModelId, sessionId])
 
   const pending = runtimeState.isStreaming
   const selectedModelSupportsImageInputs =
@@ -172,9 +177,9 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
 
   const createAndSelectSession = useCallback(() => {
     const nextSessionId = createSessionId()
-    ensureSessionPreference(nextSessionId)
+    ensureSessionPreference(currentUser.id, nextSessionId)
     setSessionId(nextSessionId)
-  }, [])
+  }, [currentUser.id])
 
   const runChatTurn = useCallback(
     async (prompt: string) => {
@@ -219,11 +224,22 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
         if (payload.status !== 'done') {
           throw new Error('OpenChat server did not accept the chat request')
         }
+
+        upsertSession({
+          id:
+            typeof payload.session_id === 'string' && payload.session_id.trim()
+              ? payload.session_id
+              : sessionId,
+          title: null,
+          status: 'running',
+          createdAt: Date.now().toString(),
+          updatedAt: Date.now().toString(),
+        })
       } finally {
         setRequestPending(false)
       }
     },
-    [attachments, selectedImageTool, selectedTextModel, sessionId],
+    [attachments, selectedImageTool, selectedTextModel, sessionId, upsertSession],
   )
 
   const handleSubmit = useCallback(async () => {
@@ -300,9 +316,9 @@ export function useChatWorkspace({ currentUser, onUnauthorized }: UseChatWorkspa
     if (!nextSessionId || nextSessionId === sessionId) {
       return
     }
-    ensureSessionPreference(nextSessionId)
+    ensureSessionPreference(currentUser.id, nextSessionId)
     setSessionId(nextSessionId)
-  }, [sessionId])
+  }, [currentUser.id, sessionId])
 
   const handleDeleteSession = useCallback(
     async (targetSessionId: string) => {

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use serde_json::Value;
-use super::db::DatabasePool;
+use crate::db::DatabasePool;
 
 fn now_millis_i64() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -16,6 +16,7 @@ fn now_millis_i64() -> i64 {
 #[derive(Clone)]
 pub struct PersistedMessage {
     pub id: String,
+    pub user_id: String,
     pub session_id: String,
     pub turn_id: String,
     pub role: String,
@@ -27,6 +28,7 @@ pub struct PersistedMessage {
 #[derive(Clone)]
 pub struct PersistedToolCall {
     pub id: String,
+    pub user_id: String,
     pub session_id: String,
     pub turn_id: String,
     pub parent_item_id: Option<String>,
@@ -45,13 +47,14 @@ pub struct PersistedTurnTerminalReason {
 }
 
 #[derive(Clone)]
-pub struct SqliteChatStore {
+pub struct ChatStore {
     pool: Arc<DatabasePool>,
 }
 
 #[derive(Clone)]
 pub struct PersistedSession {
     pub id: String,
+    pub user_id: String,
     pub title: Option<String>,
     pub status: String,
     pub created_at: String,
@@ -84,23 +87,26 @@ pub struct PersistedSessionMessage {
     pub tool_call_id: Option<String>,
 }
 
-impl SqliteChatStore {
+impl ChatStore {
     pub fn new(pool: Arc<DatabasePool>) -> Self {
         Self { pool }
     }
 
-    pub async fn ensure_session(&self, session_id: &str) -> anyhow::Result<()> {
+    pub async fn ensure_session(&self, user_id: &str, session_id: &str) -> anyhow::Result<()> {
         let now = now_millis_i64();
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO sessions (id, title, status, created_at, updated_at)
-                    VALUES (?1, NULL, 'idle', ?2, ?2)
-                    ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at
+                    INSERT INTO sessions (id, user_id, title, status, created_at, updated_at)
+                    VALUES (?1, ?2, NULL, 'idle', ?3, ?3)
+                    ON CONFLICT(id) DO UPDATE SET
+                      updated_at = excluded.updated_at
+                    WHERE sessions.user_id = excluded.user_id
                     "#,
                 )
                 .bind(session_id)
+                .bind(user_id)
                 .bind(now)
                 .execute(pool)
                 .await?;
@@ -108,12 +114,15 @@ impl SqliteChatStore {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO sessions (id, title, status, created_at, updated_at)
-                    VALUES ($1, NULL, 'idle', $2, $2)
-                    ON CONFLICT(id) DO UPDATE SET updated_at = EXCLUDED.updated_at
+                    INSERT INTO sessions (id, user_id, title, status, created_at, updated_at)
+                    VALUES ($1, $2, NULL, 'idle', $3, $3)
+                    ON CONFLICT(id) DO UPDATE SET
+                      updated_at = EXCLUDED.updated_at
+                    WHERE sessions.user_id = EXCLUDED.user_id
                     "#,
                 )
                 .bind(session_id)
+                .bind(user_id)
                 .bind(now)
                 .execute(pool)
                 .await?;
@@ -124,19 +133,21 @@ impl SqliteChatStore {
 
     pub async fn update_session_title(
         &self,
+        user_id: &str,
         session_id: &str,
         title: &str,
     ) -> anyhow::Result<Option<PersistedSession>> {
         let now = now_millis_i64();
         let normalized_title = title.trim();
         if normalized_title.is_empty() {
-            return self.get_session(session_id).await;
+            return self.get_session(user_id, session_id).await;
         }
 
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
-                sqlx::query("UPDATE sessions SET title = ?2, updated_at = ?3 WHERE id = ?1")
+            DatabasePool::Compat(pool) => {
+                sqlx::query("UPDATE sessions SET title = ?3, updated_at = ?4 WHERE id = ?1 AND user_id = ?2")
                     .bind(session_id)
+                    .bind(user_id)
                     .bind(normalized_title)
                     .bind(now)
                     .execute(pool)
@@ -144,8 +155,9 @@ impl SqliteChatStore {
                     .context("failed to update session title")?;
             }
             DatabasePool::Postgres(pool) => {
-                sqlx::query("UPDATE sessions SET title = $2, updated_at = $3 WHERE id = $1")
+                sqlx::query("UPDATE sessions SET title = $3, updated_at = $4 WHERE id = $1 AND user_id = $2")
                     .bind(session_id)
+                    .bind(user_id)
                     .bind(normalized_title)
                     .bind(now)
                     .execute(pool)
@@ -154,11 +166,12 @@ impl SqliteChatStore {
             }
         }
 
-        self.get_session(session_id).await
+        self.get_session(user_id, session_id).await
     }
 
     pub async fn begin_turn(
         &self,
+        user_id: &str,
         turn_id: &str,
         session_id: &str,
         prompt: &str,
@@ -166,18 +179,19 @@ impl SqliteChatStore {
         image_tool_id: Option<&str>,
     ) -> anyhow::Result<()> {
         let now = now_millis_i64();
-        self.ensure_session(session_id).await?;
+        // The session row must already be owned by the current user before a turn starts.
 
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO turns (id, session_id, prompt, text_model_config_id, image_tool_id, status, started_at, completed_at)
-                    VALUES (?1, ?2, ?3, ?4, ?5, 'running', ?6, NULL)
+                    INSERT INTO turns (id, session_id, user_id, prompt, text_model_config_id, image_tool_id, status, started_at, completed_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'running', ?7, NULL)
                     "#,
                 )
                 .bind(turn_id)
                 .bind(session_id)
+                .bind(user_id)
                 .bind(prompt)
                 .bind(text_model_config_id)
                 .bind(image_tool_id)
@@ -194,12 +208,13 @@ impl SqliteChatStore {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO turns (id, session_id, prompt, text_model_config_id, image_tool_id, status, started_at, completed_at)
-                    VALUES ($1, $2, $3, $4, $5, 'running', $6, NULL)
+                    INSERT INTO turns (id, session_id, user_id, prompt, text_model_config_id, image_tool_id, status, started_at, completed_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, 'running', $7, NULL)
                     "#,
                 )
                 .bind(turn_id)
                 .bind(session_id)
+                .bind(user_id)
                 .bind(prompt)
                 .bind(text_model_config_id)
                 .bind(image_tool_id)
@@ -221,12 +236,13 @@ impl SqliteChatStore {
     pub async fn upsert_message(&self, message: PersistedMessage) -> anyhow::Result<()> {
         let now = now_millis_i64();
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO messages (id, session_id, turn_id, role, status, content_json, tool_call_id, created_at, updated_at)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+                    INSERT INTO messages (id, user_id, session_id, turn_id, role, status, content_json, tool_call_id, created_at, updated_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
                     ON CONFLICT(id) DO UPDATE SET
+                      user_id = excluded.user_id,
                       status = excluded.status,
                       content_json = excluded.content_json,
                       tool_call_id = excluded.tool_call_id,
@@ -234,6 +250,7 @@ impl SqliteChatStore {
                     "#,
                 )
                 .bind(message.id)
+                .bind(message.user_id)
                 .bind(message.session_id)
                 .bind(message.turn_id)
                 .bind(message.role)
@@ -247,9 +264,10 @@ impl SqliteChatStore {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO messages (id, session_id, turn_id, role, status, content_json, tool_call_id, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+                    INSERT INTO messages (id, user_id, session_id, turn_id, role, status, content_json, tool_call_id, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
                     ON CONFLICT(id) DO UPDATE SET
+                      user_id = EXCLUDED.user_id,
                       status = EXCLUDED.status,
                       content_json = EXCLUDED.content_json,
                       tool_call_id = EXCLUDED.tool_call_id,
@@ -257,6 +275,7 @@ impl SqliteChatStore {
                     "#,
                 )
                 .bind(message.id)
+                .bind(message.user_id)
                 .bind(message.session_id)
                 .bind(message.turn_id)
                 .bind(message.role)
@@ -274,12 +293,13 @@ impl SqliteChatStore {
     pub async fn upsert_tool_call(&self, tool_call: PersistedToolCall) -> anyhow::Result<()> {
         let now = now_millis_i64();
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO tool_calls (id, session_id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json, created_at, updated_at)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
+                    INSERT INTO tool_calls (id, user_id, session_id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json, created_at, updated_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
                     ON CONFLICT(id) DO UPDATE SET
+                      user_id = excluded.user_id,
                       parent_item_id = excluded.parent_item_id,
                       tool_display_name = excluded.tool_display_name,
                       arguments_text = excluded.arguments_text,
@@ -290,6 +310,7 @@ impl SqliteChatStore {
                     "#,
                 )
                 .bind(tool_call.id)
+                .bind(tool_call.user_id)
                 .bind(tool_call.session_id)
                 .bind(tool_call.turn_id)
                 .bind(tool_call.parent_item_id)
@@ -306,9 +327,10 @@ impl SqliteChatStore {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO tool_calls (id, session_id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+                    INSERT INTO tool_calls (id, user_id, session_id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
                     ON CONFLICT(id) DO UPDATE SET
+                      user_id = EXCLUDED.user_id,
                       parent_item_id = EXCLUDED.parent_item_id,
                       tool_display_name = EXCLUDED.tool_display_name,
                       arguments_text = EXCLUDED.arguments_text,
@@ -319,6 +341,7 @@ impl SqliteChatStore {
                     "#,
                 )
                 .bind(tool_call.id)
+                .bind(tool_call.user_id)
                 .bind(tool_call.session_id)
                 .bind(tool_call.turn_id)
                 .bind(tool_call.parent_item_id)
@@ -355,7 +378,7 @@ impl SqliteChatStore {
             _ => "failed",
         };
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query(
                     "UPDATE turns SET status = ?2, completed_at = ?3, terminal_reason_code = ?4, terminal_reason_message = ?5 WHERE id = ?1",
                 )
@@ -434,10 +457,10 @@ impl SqliteChatStore {
         Ok(())
     }
 
-    pub async fn reconcile_session_items(&self, session_id: &str) -> anyhow::Result<()> {
+    pub async fn reconcile_session_items(&self, user_id: &str, session_id: &str) -> anyhow::Result<()> {
         let now = now_millis_i64();
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query(
                     r#"
                     UPDATE messages
@@ -454,16 +477,18 @@ impl SqliteChatStore {
                             ELSE 'failed'
                         END
                     ),
-                    updated_at = ?2
+                    updated_at = ?3
                     WHERE session_id = ?1
+                      AND user_id = ?2
                       AND status = 'in_progress'
                       AND turn_id IN (
                           SELECT id FROM turns
-                          WHERE session_id = ?1 AND status != 'running'
+                          WHERE session_id = ?1 AND user_id = ?2 AND status != 'running'
                       )
                     "#,
                 )
                 .bind(session_id)
+                .bind(user_id)
                 .bind(now)
                 .execute(pool)
                 .await?;
@@ -484,16 +509,18 @@ impl SqliteChatStore {
                             ELSE 'failed'
                         END
                     ),
-                    updated_at = ?2
+                    updated_at = ?3
                     WHERE session_id = ?1
+                      AND user_id = ?2
                       AND status = 'in_progress'
                       AND turn_id IN (
                           SELECT id FROM turns
-                          WHERE session_id = ?1 AND status != 'running'
+                          WHERE session_id = ?1 AND user_id = ?2 AND status != 'running'
                       )
                     "#,
                 )
                 .bind(session_id)
+                .bind(user_id)
                 .bind(now)
                 .execute(pool)
                 .await?;
@@ -515,16 +542,18 @@ impl SqliteChatStore {
                             ELSE 'failed'
                         END
                     ),
-                    updated_at = $2
+                    updated_at = $3
                     WHERE session_id = $1
+                      AND user_id = $2
                       AND status = 'in_progress'
                       AND turn_id IN (
                           SELECT id FROM turns
-                          WHERE session_id = $1 AND status != 'running'
+                          WHERE session_id = $1 AND user_id = $2 AND status != 'running'
                       )
                     "#,
                 )
                 .bind(session_id)
+                .bind(user_id)
                 .bind(now)
                 .execute(pool)
                 .await?;
@@ -545,16 +574,18 @@ impl SqliteChatStore {
                             ELSE 'failed'
                         END
                     ),
-                    updated_at = $2
+                    updated_at = $3
                     WHERE session_id = $1
+                      AND user_id = $2
                       AND status = 'in_progress'
                       AND turn_id IN (
                           SELECT id FROM turns
-                          WHERE session_id = $1 AND status != 'running'
+                          WHERE session_id = $1 AND user_id = $2 AND status != 'running'
                       )
                     "#,
                 )
                 .bind(session_id)
+                .bind(user_id)
                 .bind(now)
                 .execute(pool)
                 .await?;
@@ -566,16 +597,18 @@ impl SqliteChatStore {
 
     pub async fn interrupt_running_turn(
         &self,
+        user_id: &str,
         session_id: &str,
         turn_id: &str,
     ) -> anyhow::Result<bool> {
         let rows_affected = match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query(
-                    "UPDATE turns SET status = 'interrupted', completed_at = ?3 WHERE id = ?1 AND session_id = ?2 AND status = 'running'",
+                    "UPDATE turns SET status = 'interrupted', completed_at = ?4 WHERE id = ?1 AND session_id = ?2 AND user_id = ?3 AND status = 'running'",
                 )
                 .bind(turn_id)
                 .bind(session_id)
+                .bind(user_id)
                 .bind(now_millis_i64())
                 .execute(pool)
                 .await?
@@ -583,10 +616,11 @@ impl SqliteChatStore {
             }
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
-                    "UPDATE turns SET status = 'interrupted', completed_at = $3 WHERE id = $1 AND session_id = $2 AND status = 'running'",
+                    "UPDATE turns SET status = 'interrupted', completed_at = $4 WHERE id = $1 AND session_id = $2 AND user_id = $3 AND status = 'running'",
                 )
                 .bind(turn_id)
                 .bind(session_id)
+                .bind(user_id)
                 .bind(now_millis_i64())
                 .execute(pool)
                 .await?
@@ -613,6 +647,7 @@ impl SqliteChatStore {
 
     pub async fn reconcile_session_runtime_state(
         &self,
+        user_id: &str,
         session_id: &str,
         active_turn_ids: &[String],
     ) -> anyhow::Result<()> {
@@ -620,18 +655,20 @@ impl SqliteChatStore {
         let active_turn_id = active_turn_ids.first().map(String::as_str);
 
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 if let Some(active_turn_id) = active_turn_id {
                     sqlx::query(
                         r#"
                         UPDATE turns
-                        SET status = 'interrupted', completed_at = ?3, terminal_reason_code = 'session_recovered', terminal_reason_message = '服务已恢复，上一轮响应已中止'
+                        SET status = 'interrupted', completed_at = ?4, terminal_reason_code = 'session_recovered', terminal_reason_message = '服务已恢复，上一轮响应已中止'
                         WHERE session_id = ?1
+                          AND user_id = ?2
                           AND status = 'running'
-                          AND id != ?2
+                          AND id != ?3
                         "#,
                     )
                     .bind(session_id)
+                    .bind(user_id)
                     .bind(active_turn_id)
                     .bind(now)
                     .execute(pool)
@@ -640,12 +677,14 @@ impl SqliteChatStore {
                     sqlx::query(
                         r#"
                         UPDATE turns
-                        SET status = 'interrupted', completed_at = ?2, terminal_reason_code = 'session_recovered', terminal_reason_message = '服务已恢复，上一轮响应已中止'
+                        SET status = 'interrupted', completed_at = ?3, terminal_reason_code = 'session_recovered', terminal_reason_message = '服务已恢复，上一轮响应已中止'
                         WHERE session_id = ?1
+                          AND user_id = ?2
                           AND status = 'running'
                         "#,
                     )
                     .bind(session_id)
+                    .bind(user_id)
                     .bind(now)
                     .execute(pool)
                     .await?;
@@ -658,28 +697,29 @@ impl SqliteChatStore {
                         CASE
                             WHEN EXISTS (
                                 SELECT 1 FROM turns
-                                WHERE session_id = ?1 AND status = 'running'
+                                WHERE session_id = ?1 AND user_id = ?2 AND status = 'running'
                             ) THEN 'running'
                             WHEN EXISTS (
                                 SELECT 1 FROM turns
-                                WHERE session_id = ?1 AND status = 'failed'
+                                WHERE session_id = ?1 AND user_id = ?2 AND status = 'failed'
                             ) THEN 'failed'
                             WHEN EXISTS (
                                 SELECT 1 FROM turns
-                                WHERE session_id = ?1 AND status = 'interrupted'
+                                WHERE session_id = ?1 AND user_id = ?2 AND status = 'interrupted'
                             ) THEN 'interrupted'
                             WHEN EXISTS (
                                 SELECT 1 FROM turns
-                                WHERE session_id = ?1 AND status = 'completed'
+                                WHERE session_id = ?1 AND user_id = ?2 AND status = 'completed'
                             ) THEN 'completed'
                             ELSE status
                         END
                     ),
-                    updated_at = ?2
-                    WHERE id = ?1
+                    updated_at = ?3
+                    WHERE id = ?1 AND user_id = ?2
                     "#,
                 )
                 .bind(session_id)
+                .bind(user_id)
                 .bind(now)
                 .execute(pool)
                 .await?;
@@ -689,13 +729,15 @@ impl SqliteChatStore {
                     sqlx::query(
                         r#"
                         UPDATE turns
-                        SET status = 'interrupted', completed_at = $3, terminal_reason_code = 'session_recovered', terminal_reason_message = '服务已恢复，上一轮响应已中止'
+                        SET status = 'interrupted', completed_at = $4, terminal_reason_code = 'session_recovered', terminal_reason_message = '服务已恢复，上一轮响应已中止'
                         WHERE session_id = $1
+                          AND user_id = $2
                           AND status = 'running'
-                          AND id != $2
+                          AND id != $3
                         "#,
                     )
                     .bind(session_id)
+                    .bind(user_id)
                     .bind(active_turn_id)
                     .bind(now)
                     .execute(pool)
@@ -704,12 +746,14 @@ impl SqliteChatStore {
                     sqlx::query(
                         r#"
                         UPDATE turns
-                        SET status = 'interrupted', completed_at = $2, terminal_reason_code = 'session_recovered', terminal_reason_message = '服务已恢复，上一轮响应已中止'
+                        SET status = 'interrupted', completed_at = $3, terminal_reason_code = 'session_recovered', terminal_reason_message = '服务已恢复，上一轮响应已中止'
                         WHERE session_id = $1
+                          AND user_id = $2
                           AND status = 'running'
                         "#,
                     )
                     .bind(session_id)
+                    .bind(user_id)
                     .bind(now)
                     .execute(pool)
                     .await?;
@@ -722,58 +766,63 @@ impl SqliteChatStore {
                         CASE
                             WHEN EXISTS (
                                 SELECT 1 FROM turns
-                                WHERE session_id = $1 AND status = 'running'
+                                WHERE session_id = $1 AND user_id = $2 AND status = 'running'
                             ) THEN 'running'
                             WHEN EXISTS (
                                 SELECT 1 FROM turns
-                                WHERE session_id = $1 AND status = 'failed'
+                                WHERE session_id = $1 AND user_id = $2 AND status = 'failed'
                             ) THEN 'failed'
                             WHEN EXISTS (
                                 SELECT 1 FROM turns
-                                WHERE session_id = $1 AND status = 'interrupted'
+                                WHERE session_id = $1 AND user_id = $2 AND status = 'interrupted'
                             ) THEN 'interrupted'
                             WHEN EXISTS (
                                 SELECT 1 FROM turns
-                                WHERE session_id = $1 AND status = 'completed'
+                                WHERE session_id = $1 AND user_id = $2 AND status = 'completed'
                             ) THEN 'completed'
                             ELSE status
                         END
                     ),
-                    updated_at = $2
-                    WHERE id = $1
+                    updated_at = $3
+                    WHERE id = $1 AND user_id = $2
                     "#,
                 )
                 .bind(session_id)
+                .bind(user_id)
                 .bind(now)
                 .execute(pool)
                 .await?;
             }
         }
 
-        self.reconcile_session_items(session_id).await
+        self.reconcile_session_items(user_id, session_id).await
     }
 
-    pub async fn list_sessions(&self) -> anyhow::Result<Vec<PersistedSession>> {
+    pub async fn list_sessions(&self, user_id: &str) -> anyhow::Result<Vec<PersistedSession>> {
         let rows = match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
-                sqlx::query_as::<_, (String, Option<String>, String, i64, i64)>(
+            DatabasePool::Compat(pool) => {
+                sqlx::query_as::<_, (String, String, Option<String>, String, i64, i64)>(
                     r#"
-                    SELECT id, title, status, created_at, updated_at
+                    SELECT id, user_id, title, status, created_at, updated_at
                     FROM sessions
+                    WHERE user_id = ?1
                     ORDER BY updated_at DESC
                     "#,
                 )
+                .bind(user_id)
                 .fetch_all(pool)
                 .await
             }
             DatabasePool::Postgres(pool) => {
-                sqlx::query_as::<_, (String, Option<String>, String, i64, i64)>(
+                sqlx::query_as::<_, (String, String, Option<String>, String, i64, i64)>(
                     r#"
-                    SELECT id, title, status, created_at, updated_at
+                    SELECT id, user_id, title, status, created_at, updated_at
                     FROM sessions
+                    WHERE user_id = $1
                     ORDER BY updated_at DESC
                     "#,
                 )
+                .bind(user_id)
                 .fetch_all(pool)
                 .await
             }
@@ -783,8 +832,9 @@ impl SqliteChatStore {
         Ok(rows
             .into_iter()
             .map(
-                |(id, title, status, created_at, updated_at)| PersistedSession {
+                |(id, user_id, title, status, created_at, updated_at)| PersistedSession {
                     id,
+                    user_id,
                     title,
                     status,
                     created_at: created_at.to_string(),
@@ -794,29 +844,58 @@ impl SqliteChatStore {
             .collect())
     }
 
-    pub async fn get_session(&self, session_id: &str) -> anyhow::Result<Option<PersistedSession>> {
+    pub async fn get_session(
+        &self,
+        user_id: &str,
+        session_id: &str,
+    ) -> anyhow::Result<Option<PersistedSession>> {
+        self.get_session_with_clause(
+            session_id,
+            Some(ScopedSessionFilter {
+                user_id,
+            }),
+        )
+        .await
+    }
+
+    pub async fn get_session_unscoped(
+        &self,
+        session_id: &str,
+    ) -> anyhow::Result<Option<PersistedSession>> {
+        self.get_session_with_clause(session_id, None).await
+    }
+
+    async fn get_session_with_clause(
+        &self,
+        session_id: &str,
+        filter: Option<ScopedSessionFilter<'_>>,
+    ) -> anyhow::Result<Option<PersistedSession>> {
         let row = match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
-                sqlx::query_as::<_, (String, Option<String>, String, i64, i64)>(
+            DatabasePool::Compat(pool) => {
+                sqlx::query_as::<_, (String, String, Option<String>, String, i64, i64)>(
                     r#"
-                    SELECT id, title, status, created_at, updated_at
+                    SELECT id, user_id, title, status, created_at, updated_at
                     FROM sessions
                     WHERE id = ?1
+                      AND (?2 IS NULL OR user_id = ?2)
                     "#,
                 )
                 .bind(session_id)
+                .bind(filter.as_ref().map(|filter| filter.user_id))
                 .fetch_optional(pool)
                 .await
             }
             DatabasePool::Postgres(pool) => {
-                sqlx::query_as::<_, (String, Option<String>, String, i64, i64)>(
+                sqlx::query_as::<_, (String, String, Option<String>, String, i64, i64)>(
                     r#"
-                    SELECT id, title, status, created_at, updated_at
+                    SELECT id, user_id, title, status, created_at, updated_at
                     FROM sessions
                     WHERE id = $1
+                      AND ($2::TEXT IS NULL OR user_id = $2)
                     "#,
                 )
                 .bind(session_id)
+                .bind(filter.as_ref().map(|filter| filter.user_id))
                 .fetch_optional(pool)
                 .await
             }
@@ -824,8 +903,9 @@ impl SqliteChatStore {
         .context("failed to get session")?;
 
         Ok(row.map(
-            |(id, title, status, created_at, updated_at)| PersistedSession {
+            |(id, user_id, title, status, created_at, updated_at)| PersistedSession {
                 id,
+                user_id,
                 title,
                 status,
                 created_at: created_at.to_string(),
@@ -834,16 +914,17 @@ impl SqliteChatStore {
         ))
     }
 
-    pub async fn delete_session(&self, session_id: &str) -> anyhow::Result<bool> {
+    pub async fn delete_session(&self, user_id: &str, session_id: &str) -> anyhow::Result<bool> {
         let rows_affected = match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query(
                     r#"
                     DELETE FROM sessions
-                    WHERE id = ?1
+                    WHERE id = ?1 AND user_id = ?2
                     "#,
                 )
                 .bind(session_id)
+                .bind(user_id)
                 .execute(pool)
                 .await
                 .context("failed to delete session")?
@@ -853,10 +934,11 @@ impl SqliteChatStore {
                 sqlx::query(
                     r#"
                     DELETE FROM sessions
-                    WHERE id = $1
+                    WHERE id = $1 AND user_id = $2
                     "#,
                 )
                 .bind(session_id)
+                .bind(user_id)
                 .execute(pool)
                 .await
                 .context("failed to delete session")?
@@ -869,33 +951,36 @@ impl SqliteChatStore {
 
     pub async fn list_session_messages(
         &self,
+        user_id: &str,
         session_id: &str,
     ) -> anyhow::Result<Vec<PersistedSessionMessage>> {
-        self.reconcile_session_items(session_id).await?;
+        self.reconcile_session_items(user_id, session_id).await?;
 
         let rows = match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
-                sqlx::query_as::<_, (String, String, String, String, String, i64, i64, String, Option<String>)>(
+            DatabasePool::Compat(pool) => {
+                sqlx::query_as::<_, (String, String, String, String, String, String, i64, i64, String, Option<String>)>(
                     r#"
-                    SELECT id, session_id, turn_id, role, status, created_at, updated_at, content_json, tool_call_id
+                    SELECT id, user_id, session_id, turn_id, role, status, created_at, updated_at, content_json, tool_call_id
                     FROM messages
-                    WHERE session_id = ?1
+                    WHERE user_id = ?1 AND session_id = ?2
                     ORDER BY created_at ASC, id ASC
                     "#,
                 )
+                .bind(user_id)
                 .bind(session_id)
                 .fetch_all(pool)
                 .await
             }
             DatabasePool::Postgres(pool) => {
-                sqlx::query_as::<_, (String, String, String, String, String, i64, i64, String, Option<String>)>(
+                sqlx::query_as::<_, (String, String, String, String, String, String, i64, i64, String, Option<String>)>(
                     r#"
-                    SELECT id, session_id, turn_id, role, status, created_at, updated_at, content_json, tool_call_id
+                    SELECT id, user_id, session_id, turn_id, role, status, created_at, updated_at, content_json, tool_call_id
                     FROM messages
-                    WHERE session_id = $1
+                    WHERE user_id = $1 AND session_id = $2
                     ORDER BY created_at ASC, id ASC
                     "#,
                 )
+                .bind(user_id)
                 .bind(session_id)
                 .fetch_all(pool)
                 .await
@@ -908,6 +993,7 @@ impl SqliteChatStore {
             .map(
                 |(
                     id,
+                    _user_id,
                     session_id,
                     turn_id,
                     role,
@@ -916,6 +1002,17 @@ impl SqliteChatStore {
                     updated_at,
                     content_json,
                     tool_call_id,
+                ): (
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    i64,
+                    i64,
+                    String,
+                    Option<String>,
                 )| {
                     let content = serde_json::from_str::<Value>(&content_json)
                         .unwrap_or_else(|_| Value::Array(Vec::new()));
@@ -937,18 +1034,20 @@ impl SqliteChatStore {
 
     pub async fn list_session_tool_calls(
         &self,
+        user_id: &str,
         session_id: &str,
     ) -> anyhow::Result<Vec<PersistedSessionToolCall>> {
         let rows = match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, Option<String>, Option<String>, String, Option<String>)>(
                     r#"
                     SELECT id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json
                     FROM tool_calls
-                    WHERE session_id = ?1
+                    WHERE user_id = ?1 AND session_id = ?2
                     ORDER BY created_at ASC, id ASC
                     "#,
                 )
+                .bind(user_id)
                 .bind(session_id)
                 .fetch_all(pool)
                 .await
@@ -958,10 +1057,11 @@ impl SqliteChatStore {
                     r#"
                     SELECT id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json
                     FROM tool_calls
-                    WHERE session_id = $1
+                    WHERE user_id = $1 AND session_id = $2
                     ORDER BY created_at ASC, id ASC
                     "#,
                 )
+                .bind(user_id)
                 .bind(session_id)
                 .fetch_all(pool)
                 .await
@@ -997,3 +1097,8 @@ impl SqliteChatStore {
             .collect())
     }
 }
+
+struct ScopedSessionFilter<'a> {
+    user_id: &'a str,
+}
+

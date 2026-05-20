@@ -10,7 +10,7 @@ use rand::RngCore;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
 
-use super::db::DatabasePool;
+use crate::db::DatabasePool;
 
 fn now_millis_i64() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,31 +22,27 @@ fn now_millis_i64() -> i64 {
 }
 
 #[derive(Clone)]
-pub struct PersistedProviderSetting {
+pub struct PersistedUserProviderApiKey {
     pub provider_key: String,
-    pub base_url: String,
-    pub enabled: bool,
     pub created_at: String,
     pub updated_at: String,
     pub api_key: String,
 }
 
 #[derive(Clone)]
-pub struct ProviderSettingUpdate {
+pub struct UpdateUserProviderApiKey {
     pub user_id: String,
     pub provider_key: String,
-    pub base_url: String,
     pub api_key: Option<String>,
-    pub enabled: bool,
 }
 
 #[derive(Clone)]
-pub struct SqliteProviderSettingsStore {
+pub struct UserProviderApiKeyStore {
     pool: Arc<DatabasePool>,
     cipher_key: Arc<[u8; 32]>,
 }
 
-impl SqliteProviderSettingsStore {
+impl UserProviderApiKeyStore {
     pub fn new(pool: Arc<DatabasePool>, secret: &str) -> Self {
         Self {
             pool,
@@ -54,16 +50,16 @@ impl SqliteProviderSettingsStore {
         }
     }
 
-    pub async fn list_user_settings(
+    pub async fn list_user_api_keys(
         &self,
         user_id: &str,
-    ) -> anyhow::Result<Vec<PersistedProviderSetting>> {
+    ) -> anyhow::Result<Vec<PersistedUserProviderApiKey>> {
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 let rows = sqlx::query(
                     r#"
-                    SELECT provider_key, base_url, enabled, created_at, updated_at, api_key_ciphertext
-                    FROM provider_settings
+                    SELECT provider_key, created_at, updated_at, api_key_ciphertext
+                    FROM user_provider_api_keys
                     WHERE user_id = ?1
                     ORDER BY provider_key ASC
                     "#,
@@ -71,15 +67,13 @@ impl SqliteProviderSettingsStore {
                 .bind(user_id)
                 .fetch_all(pool)
                 .await
-                .context("failed to list provider settings")?;
+                .context("failed to list user provider api keys")?;
 
                 rows.into_iter()
                     .map(|row| {
                         let encrypted = row.get::<String, _>("api_key_ciphertext");
-                        Ok(PersistedProviderSetting {
+                        Ok(PersistedUserProviderApiKey {
                             provider_key: row.get("provider_key"),
-                            base_url: row.get("base_url"),
-                            enabled: row.get::<i32, _>("enabled") != 0,
                             created_at: row.get::<i64, _>("created_at").to_string(),
                             updated_at: row.get::<i64, _>("updated_at").to_string(),
                             api_key: decrypt_secret(self.cipher_key.as_ref(), encrypted.as_str())?,
@@ -90,8 +84,8 @@ impl SqliteProviderSettingsStore {
             DatabasePool::Postgres(pool) => {
                 let rows = sqlx::query(
                     r#"
-                    SELECT provider_key, base_url, enabled, created_at, updated_at, api_key_ciphertext
-                    FROM provider_settings
+                    SELECT provider_key, created_at, updated_at, api_key_ciphertext
+                    FROM user_provider_api_keys
                     WHERE user_id = $1
                     ORDER BY provider_key ASC
                     "#,
@@ -99,15 +93,13 @@ impl SqliteProviderSettingsStore {
                 .bind(user_id)
                 .fetch_all(pool)
                 .await
-                .context("failed to list provider settings")?;
+                .context("failed to list user provider api keys")?;
 
                 rows.into_iter()
                     .map(|row| {
                         let encrypted = row.get::<String, _>("api_key_ciphertext");
-                        Ok(PersistedProviderSetting {
+                        Ok(PersistedUserProviderApiKey {
                             provider_key: row.get("provider_key"),
-                            base_url: row.get("base_url"),
-                            enabled: row.get::<i32, _>("enabled") != 0,
                             created_at: row.get::<i64, _>("created_at").to_string(),
                             updated_at: row.get::<i64, _>("updated_at").to_string(),
                             api_key: decrypt_secret(self.cipher_key.as_ref(), encrypted.as_str())?,
@@ -118,17 +110,17 @@ impl SqliteProviderSettingsStore {
         }
     }
 
-    pub async fn find_user_setting(
+    pub async fn find_user_api_key(
         &self,
         user_id: &str,
         provider_key: &str,
-    ) -> anyhow::Result<Option<PersistedProviderSetting>> {
+    ) -> anyhow::Result<Option<PersistedUserProviderApiKey>> {
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 let row = sqlx::query(
                     r#"
-                    SELECT provider_key, base_url, enabled, created_at, updated_at, api_key_ciphertext
-                    FROM provider_settings
+                    SELECT provider_key, created_at, updated_at, api_key_ciphertext
+                    FROM user_provider_api_keys
                     WHERE user_id = ?1 AND provider_key = ?2
                     "#,
                 )
@@ -136,14 +128,12 @@ impl SqliteProviderSettingsStore {
                 .bind(provider_key)
                 .fetch_optional(pool)
                 .await
-                .context("failed to read provider setting")?;
+                .context("failed to read user provider api key")?;
 
                 row.map(|row| {
                     let encrypted = row.get::<String, _>("api_key_ciphertext");
-                    Ok(PersistedProviderSetting {
+                    Ok(PersistedUserProviderApiKey {
                         provider_key: row.get("provider_key"),
-                        base_url: row.get("base_url"),
-                        enabled: row.get::<i32, _>("enabled") != 0,
                         created_at: row.get::<i64, _>("created_at").to_string(),
                         updated_at: row.get::<i64, _>("updated_at").to_string(),
                         api_key: decrypt_secret(self.cipher_key.as_ref(), encrypted.as_str())?,
@@ -154,8 +144,8 @@ impl SqliteProviderSettingsStore {
             DatabasePool::Postgres(pool) => {
                 let row = sqlx::query(
                     r#"
-                    SELECT provider_key, base_url, enabled, created_at, updated_at, api_key_ciphertext
-                    FROM provider_settings
+                    SELECT provider_key, created_at, updated_at, api_key_ciphertext
+                    FROM user_provider_api_keys
                     WHERE user_id = $1 AND provider_key = $2
                     "#,
                 )
@@ -163,14 +153,12 @@ impl SqliteProviderSettingsStore {
                 .bind(provider_key)
                 .fetch_optional(pool)
                 .await
-                .context("failed to read provider setting")?;
+                .context("failed to read user provider api key")?;
 
                 row.map(|row| {
                     let encrypted = row.get::<String, _>("api_key_ciphertext");
-                    Ok(PersistedProviderSetting {
+                    Ok(PersistedUserProviderApiKey {
                         provider_key: row.get("provider_key"),
-                        base_url: row.get("base_url"),
-                        enabled: row.get::<i32, _>("enabled") != 0,
                         created_at: row.get::<i64, _>("created_at").to_string(),
                         updated_at: row.get::<i64, _>("updated_at").to_string(),
                         api_key: decrypt_secret(self.cipher_key.as_ref(), encrypted.as_str())?,
@@ -181,21 +169,20 @@ impl SqliteProviderSettingsStore {
         }
     }
 
-    pub async fn upsert_user_setting(
+    pub async fn upsert_user_api_key(
         &self,
-        update: ProviderSettingUpdate,
-    ) -> anyhow::Result<PersistedProviderSetting> {
+        update: UpdateUserProviderApiKey,
+    ) -> anyhow::Result<PersistedUserProviderApiKey> {
         let existing = self
-            .find_user_setting(update.user_id.as_str(), update.provider_key.as_str())
+            .find_user_api_key(update.user_id.as_str(), update.provider_key.as_str())
             .await?;
         let api_key = update
             .api_key
             .as_deref()
             .map(str::trim)
-            .filter(|value| !value.is_empty())
             .map(str::to_string)
             .or_else(|| existing.as_ref().map(|value| value.api_key.clone()))
-            .ok_or_else(|| anyhow!("An API key is required for this provider"))?;
+            .unwrap_or_default();
 
         let now = now_millis_i64();
         let created_at = existing
@@ -205,60 +192,50 @@ impl SqliteProviderSettingsStore {
         let ciphertext = encrypt_secret(self.cipher_key.as_ref(), api_key.as_str())?;
 
         match self.pool.as_ref() {
-            DatabasePool::Sqlite(pool) => {
+            DatabasePool::Compat(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO provider_settings
-                    (user_id, provider_key, base_url, api_key_ciphertext, enabled, created_at, updated_at)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                    INSERT INTO user_provider_api_keys
+                    (user_id, provider_key, api_key_ciphertext, created_at, updated_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5)
                     ON CONFLICT(user_id, provider_key) DO UPDATE SET
-                      base_url = excluded.base_url,
                       api_key_ciphertext = excluded.api_key_ciphertext,
-                      enabled = excluded.enabled,
                       updated_at = excluded.updated_at
                     "#,
                 )
                 .bind(update.user_id.as_str())
                 .bind(update.provider_key.as_str())
-                .bind(update.base_url.trim())
                 .bind(&ciphertext)
-                .bind(if update.enabled { 1_i32 } else { 0_i32 })
                 .bind(created_at)
                 .bind(now)
                 .execute(pool)
                 .await
-                .context("failed to persist provider setting")?;
+                .context("failed to persist user provider api key")?;
             }
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO provider_settings
-                    (user_id, provider_key, base_url, api_key_ciphertext, enabled, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    INSERT INTO user_provider_api_keys
+                    (user_id, provider_key, api_key_ciphertext, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5)
                     ON CONFLICT(user_id, provider_key) DO UPDATE SET
-                      base_url = EXCLUDED.base_url,
                       api_key_ciphertext = EXCLUDED.api_key_ciphertext,
-                      enabled = EXCLUDED.enabled,
                       updated_at = EXCLUDED.updated_at
                     "#,
                 )
                 .bind(update.user_id.as_str())
                 .bind(update.provider_key.as_str())
-                .bind(update.base_url.trim())
                 .bind(&ciphertext)
-                .bind(if update.enabled { 1_i32 } else { 0_i32 })
                 .bind(created_at)
                 .bind(now)
                 .execute(pool)
                 .await
-                .context("failed to persist provider setting")?;
+                .context("failed to persist user provider api key")?;
             }
         }
 
-        Ok(PersistedProviderSetting {
+        Ok(PersistedUserProviderApiKey {
             provider_key: update.provider_key,
-            base_url: update.base_url.trim().to_string(),
-            enabled: update.enabled,
             created_at: created_at.to_string(),
             updated_at: now.to_string(),
             api_key,
