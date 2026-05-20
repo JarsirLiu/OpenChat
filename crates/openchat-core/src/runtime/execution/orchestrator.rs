@@ -6,6 +6,8 @@ use serde_json::{json, Value};
 use tokio::time::{timeout, Duration};
 
 use crate::{
+    assistant_text_to_content_json, append_image_media_parts, format_tool_result_text,
+    user_content_to_json, user_content_to_outbound_parts,
     runtime::execution::{
         event_builder::{
             build_image_generated_event, build_message_delta_event, build_message_item,
@@ -13,7 +15,7 @@ use crate::{
             build_reasoning_delta_event, build_reasoning_item, build_reasoning_started_event,
             build_tool_call_arguments_delta_event, build_tool_call_completed_event,
             build_tool_call_item, build_tool_call_started_event, build_turn,
-            build_turn_started_event, image_part, send_event, text_part,
+            build_turn_started_event, send_event,
         },
         helpers::now_string,
         lifecycle::{emit_session_updated, finalize_turn, TurnTerminalState},
@@ -137,8 +139,7 @@ where
             ),
         );
 
-        let user_content =
-            build_user_content_json(plan.prompt.as_str(), plan.attachments.as_slice());
+        let user_content = user_content_to_json(plan.prompt.as_str(), plan.attachments.as_slice());
 
         let _ = send_event(
             &session_runtime,
@@ -200,7 +201,7 @@ where
                 turn_id: active_turn.turn_id().to_string(),
                 role: "assistant".into(),
                 status: "in_progress".into(),
-                content_json: build_assistant_content_json("").to_string(),
+                content_json: assistant_text_to_content_json("").to_string(),
                 tool_call_id: None,
             },
         )
@@ -391,7 +392,7 @@ where
                                 turn_id: active_turn.turn_id().to_string(),
                                 role: "assistant".into(),
                                 status: "in_progress".into(),
-                                content_json: build_assistant_content_json(
+                                content_json: assistant_text_to_content_json(
                                     assistant_accumulator.as_str(),
                                 )
                                 .to_string(),
@@ -541,7 +542,7 @@ where
                                 turn_id: active_turn.turn_id().to_string(),
                                 role: "assistant".into(),
                                 status: "in_progress".into(),
-                                content_json: build_assistant_content_json(
+                                content_json: assistant_text_to_content_json(
                                     assistant_accumulator.as_str(),
                                 )
                                 .to_string(),
@@ -664,7 +665,7 @@ where
                 turn_id: active_turn.turn_id().to_string(),
                 role: "assistant".into(),
                 status: "completed".into(),
-                content_json: build_assistant_content_json(assistant_accumulator.as_str())
+                content_json: assistant_text_to_content_json(assistant_accumulator.as_str())
                     .to_string(),
                 tool_call_id: None,
             },
@@ -775,104 +776,21 @@ async fn upsert_message(chat_store: &ChatStore, message: PersistedMessage) -> an
     chat_store.upsert_message(message).await
 }
 
-fn build_assistant_content_json(text: &str) -> Value {
-    let mut parts = Vec::new();
-    if !text.is_empty() {
-        parts.push(text_part(text.to_string()));
-    }
-    Value::Array(parts)
-}
-
-fn build_user_content_json(text: &str, attachments: &[crate::TurnAttachment]) -> Value {
-    let mut parts = Vec::new();
-
-    if !text.trim().is_empty() {
-        parts.push(text_part(text.to_string()));
-    }
-
-    for attachment in attachments {
-        if attachment.mime_type.starts_with("image/") {
-            parts.push(image_part(
-                attachment.url.clone(),
-                attachment.name.as_str(),
-                Some(attachment.id.clone()),
-            ));
-        }
-    }
-
-    Value::Array(parts)
-}
-
-fn user_content_to_outbound_parts(
-    text: &str,
-    attachments: &[crate::TurnAttachment],
-) -> Vec<OutboundContentPart> {
-    let mut parts = Vec::new();
-    if !text.trim().is_empty() {
-        parts.push(OutboundContentPart::Text {
-            text: text.to_string(),
-        });
-    }
-    for attachment in attachments {
-        if attachment.mime_type.starts_with("image/") {
-            parts.push(OutboundContentPart::ImageUrl {
-                url: attachment.url.clone(),
-                media_id: Some(attachment.id.clone()),
-            });
-        }
-    }
-    parts
-}
-
 fn tool_result_to_history_text(call: &CompletedToolCall) -> String {
-    let status = if call.failed { "failed" } else { "completed" };
-    let mut lines = vec![
-        format!("tool: {}", call.tool_display_name),
-        format!("status: {status}"),
-        format!("arguments: {}", call.arguments_text),
-        format!(
-            "result: {}",
-            sanitized_tool_result_for_history(&call.result)
-        ),
-    ];
-    let image_count = call
-        .media
-        .iter()
-        .filter(|media| media.kind == "image")
-        .count();
-    if image_count > 0 {
-        lines.push(format!(
-            "image_attachment: {} image(s) available",
-            image_count
-        ));
-    }
-    lines.join("\n")
-}
-
-fn sanitized_tool_result_for_history(result: &Value) -> Value {
-    let mut sanitized = result.clone();
-
-    if let Some(output) = sanitized.get_mut("output").and_then(Value::as_object_mut) {
-        output.remove("downloadUrl");
-    }
-
-    sanitized
+    format_tool_result_text(
+        call.tool_display_name.as_str(),
+        if call.failed { "failed" } else { "completed" },
+        Some(call.arguments_text.as_str()),
+        Some(&call.result),
+        call.media.as_slice(),
+    )
 }
 
 fn tool_result_to_outbound_parts(call: &CompletedToolCall) -> Vec<OutboundContentPart> {
     let mut parts = vec![OutboundContentPart::Text {
         text: tool_result_to_history_text(call),
     }];
-
-    for media in call.media.iter().filter(|media| media.kind == "image") {
-        if media.url.trim().is_empty() {
-            continue;
-        }
-        parts.push(OutboundContentPart::ImageUrl {
-            url: media.url.clone(),
-            media_id: media.object_key.clone(),
-        });
-    }
+    append_image_media_parts(&mut parts, call.media.as_slice());
 
     parts
 }

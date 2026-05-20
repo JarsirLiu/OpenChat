@@ -9,7 +9,7 @@ use crate::{
     MediaAsset, SessionRuntime, StreamEventPayload,
 };
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 pub fn send_event<T: Serialize>(
     runtime: &SessionRuntime,
@@ -342,20 +342,4 @@ pub fn build_turn_failed_event(
             message,
         },
     }
-}
-
-pub fn text_part(text: String) -> Value {
-    json!({
-        "type": "text",
-        "text": text,
-    })
-}
-
-pub fn image_part(url: String, alt: &str, media_id: Option<String>) -> Value {
-    json!({
-        "type": "image",
-        "url": url,
-        "alt": alt,
-        "media_id": media_id,
-    })
 }

@@ -1,9 +1,10 @@
 use openchat_infra::stores::{PersistedSessionMessage, PersistedSessionToolCall};
-use serde_json::Value;
 
-use crate::{parse_media_assets_json, MediaAsset};
-
-use super::types::{OutboundContentPart, OutboundMessage, OutboundToolCall};
+use super::{
+    append_image_media_parts, collect_attached_tool_calls, format_persisted_tool_result_text,
+    types::{OutboundContentPart, OutboundMessage, OutboundToolCall},
+    value_to_outbound_content_parts,
+};
 
 pub fn normalize_session_history(
     messages: Vec<PersistedSessionMessage>,
@@ -13,7 +14,7 @@ pub fn normalize_session_history(
         .into_iter()
         .map(|message| {
             let attached_tool_calls = if message.role == "assistant" {
-                collect_attached_tool_calls(&message, &tool_calls)
+                collect_attached_tool_calls(message.id.as_str(), message.turn_id.as_str(), &tool_calls)
             } else {
                 Vec::new()
             };
@@ -34,39 +35,20 @@ pub fn normalize_session_history(
         .collect()
 }
 
-fn collect_attached_tool_calls(
-    message: &PersistedSessionMessage,
-    tool_calls: &[PersistedSessionToolCall],
-) -> Vec<PersistedSessionToolCall> {
-    tool_calls
-        .iter()
-        .filter(|tool_call| {
-            tool_call.parent_item_id.as_deref() == Some(message.id.as_str())
-                || (tool_call.parent_item_id.is_none() && tool_call.turn_id == message.turn_id)
-        })
-        .cloned()
-        .collect()
-}
-
 fn normalize_content_parts(
-    content: Value,
+    content: serde_json::Value,
     attached_tool_calls: Vec<PersistedSessionToolCall>,
 ) -> Vec<OutboundContentPart> {
     let mut parts = value_to_outbound_content_parts(content);
 
     for tool_call in attached_tool_calls {
         parts.push(OutboundContentPart::Text {
-            text: format_tool_result_text(&tool_call),
+            text: format_persisted_tool_result_text(&tool_call),
         });
-
-        for media in tool_call_media(&tool_call) {
-            if media.kind == "image" && !media.url.trim().is_empty() {
-                parts.push(OutboundContentPart::ImageUrl {
-                    url: media.url,
-                    media_id: media.object_key,
-                });
-            }
-        }
+        append_image_media_parts(
+            &mut parts,
+            crate::parse_media_assets_json(tool_call.media_json.as_deref()).as_slice(),
+        );
     }
 
     parts
@@ -78,87 +60,6 @@ pub fn tool_call_to_outbound_tool_call(tool_call: &PersistedSessionToolCall) -> 
         name: tool_call.tool_name.clone(),
         arguments_text: tool_call.arguments_text.clone().unwrap_or_default(),
     }
-}
-
-fn value_to_outbound_content_parts(value: Value) -> Vec<OutboundContentPart> {
-    value
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|part| {
-            let item_type = part.get("type")?.as_str()?;
-            match item_type {
-                "text" => Some(OutboundContentPart::Text {
-                    text: part.get("text")?.as_str()?.to_string(),
-                }),
-                "image" => Some(OutboundContentPart::ImageUrl {
-                    url: part.get("url")?.as_str()?.to_string(),
-                    media_id: part
-                        .get("media_id")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                }),
-                _ => None,
-            }
-        })
-        .collect()
-}
-
-fn format_tool_result_text(tool_call: &PersistedSessionToolCall) -> String {
-    let display_name = tool_call
-        .tool_display_name
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or(tool_call.tool_name.as_str());
-
-    let mut lines = vec![
-        format!("[Tool Result: {display_name}]"),
-        format!("status: {}", tool_call.status),
-    ];
-
-    if let Some(arguments_text) = tool_call
-        .arguments_text
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        lines.push(format!("arguments: {arguments_text}"));
-    }
-
-    if let Some(result_text) = tool_call
-        .result_json
-        .as_deref()
-        .and_then(parse_result_json_text)
-    {
-        lines.push(format!("result: {result_text}"));
-    }
-
-    let image_count = tool_call_media(tool_call)
-        .iter()
-        .filter(|media| media.kind == "image")
-        .count();
-    if image_count > 0 {
-        lines.push(format!(
-            "image_attachment: {image_count} image(s) available"
-        ));
-    }
-
-    lines.join("\n")
-}
-
-fn tool_call_media(tool_call: &PersistedSessionToolCall) -> Vec<MediaAsset> {
-    parse_media_assets_json(tool_call.media_json.as_deref())
-}
-
-fn parse_result_json_text(raw: &str) -> Option<String> {
-    let mut value = serde_json::from_str::<Value>(raw).ok()?;
-    if let Some(output) = value.get_mut("output").and_then(Value::as_object_mut) {
-        output.remove("downloadUrl");
-    }
-    if let Some(output) = value.get("output") {
-        return Some(output.to_string());
-    }
-    Some(value.to_string())
 }
 
 #[cfg(test)]

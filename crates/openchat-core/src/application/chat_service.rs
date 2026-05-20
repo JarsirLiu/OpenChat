@@ -4,7 +4,7 @@ use openchat_infra::stores::{ChatStore, PersistedSession};
 use tokio::sync::broadcast;
 
 use crate::{
-    build_session_context,
+    build_session_context, collect_attached_tool_calls,
     events::{MessageSnapshotDto, ToolCallSummaryDto},
     normalize_session_history, parse_media_assets_json, session_history_window_size,
     ActiveTurnRegistry, ChatRequest, ChatServiceError, InMemorySessionStore, SessionContext,
@@ -229,13 +229,12 @@ impl ChatService {
                 .into_iter()
                 .map(|message| {
                     let attached_tool_calls = if message.role == "assistant" {
-                        let items: Vec<_> = tool_calls
+                        let items: Vec<_> = collect_attached_tool_calls(
+                            message.id.as_str(),
+                            message.turn_id.as_str(),
+                            &tool_calls,
+                        )
                             .iter()
-                            .filter(|tool_call| {
-                                tool_call.parent_item_id.as_deref() == Some(message.id.as_str())
-                                    || (tool_call.parent_item_id.is_none()
-                                        && tool_call.turn_id == message.turn_id)
-                            })
                             .map(|tool_call| {
                                 let media =
                                     parse_media_assets_json(tool_call.media_json.as_deref());
