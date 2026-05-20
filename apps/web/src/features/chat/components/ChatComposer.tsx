@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from 'react'
 import { ArrowUp, Check, ChevronDown, ImagePlus, Plus, Search, Square, X } from 'lucide-react'
-import { ModelIcon } from '@lobehub/icons'
 import clsx from 'clsx'
 import {
   filterSupportedImageFiles,
   SUPPORTED_IMAGE_ACCEPT,
 } from '../imageUpload'
 import { resolveModelIconKey } from '../modelIcon'
+import { ModelAvatar } from './ModelAvatar'
 import type {
   ModelMenuItem,
   UploadedImageAttachment,
@@ -364,10 +364,9 @@ export function ChatComposer({
                           }}
                         >
                           <div className="flex min-w-0 items-center gap-2">
-                            <ModelIcon
+                            <ModelAvatar
                               model={tool.iconKey ?? resolveModelIconKey(tool.key, tool.provider, tool.meta)}
                               size={16}
-                              type="avatar"
                             />
                             <div className="flex min-w-0 flex-col">
                               <span className="truncate text-[12px] font-medium text-gray-800 dark:text-gray-200 sm:text-[14px] sm:font-normal">
@@ -413,10 +412,9 @@ export function ChatComposer({
                     : undefined
                 }
               >
-                <ModelIcon
+                <ModelAvatar
                   model={resolveModelIconKey(selectedModelKey, selectedModelProvider, selectedModelLabel)}
                   size={20}
-                  type={'avatar'}
                 />
                 <span className="max-w-[96px] truncate sm:max-w-[160px]">{selectedModelLabel}</span>
                 <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" strokeWidth={2} />
@@ -465,7 +463,10 @@ export function ChatComposer({
                           }}
                         >
                           <div className="flex min-w-0 items-center gap-2">
-                            <ModelIcon model={model.iconKey ?? resolveModelIconKey(model.key, model.provider, model.meta)} size={16} type={'avatar'} />
+                            <ModelAvatar
+                              model={model.iconKey ?? resolveModelIconKey(model.key, model.provider, model.meta)}
+                              size={16}
+                            />
                             <div className="flex min-w-0 flex-col">
                               <div className="flex min-w-0 items-center gap-2">
                                 <span className="truncate text-[12px] font-medium text-gray-800 dark:text-gray-200 sm:text-[14px] sm:font-normal">
