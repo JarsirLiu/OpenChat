@@ -1,11 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AuthUser } from '../../../lib/auth'
-import { isProviderConfigurationError } from '../../../lib/apiError'
+import { AuthError, authenticatedFetch } from '../../../lib/auth'
 import { ProviderSettingsDialog } from './ProviderSettingsDialog'
 import { ChatWorkspaceDesktop } from './ChatWorkspaceDesktop'
 import { ChatWorkspaceMobile } from './ChatWorkspaceMobile'
 import { RenameSessionDialog } from './ChatWorkspaceShared'
 import { useChatWorkspace } from '../useChatWorkspace'
+import type { UserProviderApiKey } from '../types'
+
+const DEFAULT_PROVIDER_KEY = 'openai'
+
+async function loadDefaultProviderApiKeyStatus() {
+  const response = await authenticatedFetch('/api/user-provider-api-keys')
+  if (!response.ok) {
+    return null
+  }
+
+  const payload = (await response.json()) as UserProviderApiKey[]
+  return payload.find((item) => item.provider_key === DEFAULT_PROVIDER_KEY)?.has_api_key ?? false
+}
 
 interface ChatWorkspaceProps {
   currentUser: AuthUser
@@ -31,9 +44,8 @@ export function ChatWorkspace({
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 1024 : false,
   )
-  const hasAutoOpenedSettingsRef = useRef(false)
+  const hasCheckedInitialProviderSetupRef = useRef(false)
   const {
-    catalogErrorCode,
     catalogLoading,
     currentSession,
     handleDeleteSession,
@@ -43,10 +55,8 @@ export function ChatWorkspace({
     handleSubmit,
     imageMenuItems,
     input,
-    imageTools,
     pending,
     requestPending,
-    requestErrorCode,
     historyHasMore,
     historyLoading,
     loadOlderHistory,
@@ -92,6 +102,40 @@ export function ChatWorkspace({
   }, [])
 
   useEffect(() => {
+    if (hasCheckedInitialProviderSetupRef.current) {
+      return
+    }
+
+    let active = true
+
+    const syncInitialSettingsState = async () => {
+      try {
+        const hasDefaultProviderApiKey = await loadDefaultProviderApiKeyStatus()
+
+        if (!active || hasDefaultProviderApiKey === null) {
+          return
+        }
+
+        hasCheckedInitialProviderSetupRef.current = true
+
+        if (!hasDefaultProviderApiKey) {
+          setSettingsOpen(true)
+        }
+      } catch (error) {
+        if (error instanceof AuthError && error.status === 401) {
+          onUnauthorized()
+        }
+      }
+    }
+
+    void syncInitialSettingsState()
+
+    return () => {
+      active = false
+    }
+  }, [onUnauthorized])
+
+  useEffect(() => {
     if (scrollRef.current && pending) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
@@ -131,27 +175,6 @@ export function ChatWorkspace({
       container.removeEventListener('scroll', handleScroll)
     }
   }, [historyHasMore, historyLoading, loadOlderHistory])
-
-  useEffect(() => {
-    if (
-      runtimeState.error?.code === 'provider_authentication_failed' ||
-      isProviderConfigurationError(requestErrorCode ? { code: requestErrorCode } : null) ||
-      isProviderConfigurationError(catalogErrorCode ? { code: catalogErrorCode } : null)
-    ) {
-      setSettingsOpen(true)
-    }
-  }, [catalogErrorCode, requestErrorCode, runtimeState.error?.code])
-
-  useEffect(() => {
-    if (hasAutoOpenedSettingsRef.current || catalogLoading || settingsOpen) {
-      return
-    }
-
-    if (selectedTextModel?.available === false) {
-      hasAutoOpenedSettingsRef.current = true
-      setSettingsOpen(true)
-    }
-  }, [catalogLoading, selectedTextModel?.available, settingsOpen])
 
   useEffect(() => {
     if (!renameDialogOpen) {
