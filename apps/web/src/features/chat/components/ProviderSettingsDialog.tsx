@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   AlertCircle,
   Check,
@@ -51,6 +51,9 @@ const CUSTOM_MODEL_TYPE_OPTIONS: Array<{
   { value: 'multimodal', label: '多模态' },
   { value: 'image', label: '图片生成' },
 ]
+
+const secretInputClassName =
+  'h-11 w-full rounded-xl border border-gray-200 bg-white px-4 pr-11 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500'
 
 export function ProviderSettingsDialog({
   isOpen,
@@ -263,12 +266,10 @@ export function ProviderSettingsDialog({
   }
 
   const providerApiKeyDisplayValue = form.apiKey || form.maskedApiKey
-  const providerApiKeyInputType =
-    !form.apiKey && form.maskedApiKey && !providerApiKeyVisible
-      ? 'text'
-      : providerApiKeyVisible
-        ? 'text'
-        : 'password'
+  const providerApiKeyMasked =
+    Boolean(providerApiKeyDisplayValue) &&
+    !providerApiKeyVisible &&
+    (Boolean(form.apiKey) || Boolean(form.maskedApiKey))
 
   const saveProvider = async () => {
     setSaving(true)
@@ -466,7 +467,13 @@ export function ProviderSettingsDialog({
                     </div>
                   </div>
 
-                  <div className="space-y-4">
+                  <form
+                    className="space-y-4"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      void saveProvider()
+                    }}
+                  >
                     <label className="block">
                       <div className="mb-2 flex items-center justify-between text-[13px] font-medium text-gray-700 dark:text-gray-300">
                         <span>API Key</span>
@@ -484,7 +491,10 @@ export function ProviderSettingsDialog({
                       <div className="relative">
                         <input
                           ref={providerApiKeyInputRef}
-                          type={providerApiKeyInputType}
+                          name="provider_api_key"
+                          autoComplete="off"
+                          spellCheck={false}
+                          type="text"
                           value={providerApiKeyDisplayValue}
                           onChange={(event) =>
                             updateForm({
@@ -493,7 +503,13 @@ export function ProviderSettingsDialog({
                             })
                           }
                           placeholder="请输入你购买的 API Key"
-                          className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 pr-11 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
+                          data-secret-masked={providerApiKeyMasked ? 'true' : 'false'}
+                          className={secretInputClassName}
+                          style={
+                            providerApiKeyMasked
+                              ? ({ WebkitTextSecurity: 'disc' } as CSSProperties)
+                              : undefined
+                          }
                         />
                         <button
                           type="button"
@@ -515,8 +531,7 @@ export function ProviderSettingsDialog({
 
                     <div className="flex items-center justify-end">
                       <button
-                        type="button"
-                        onClick={() => void saveProvider()}
+                        type="submit"
                         disabled={saving}
                         className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-[13px] font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-200 dark:hover:bg-gray-800"
                       >
@@ -524,7 +539,7 @@ export function ProviderSettingsDialog({
                         <span>{saving ? '保存中' : '保存'}</span>
                       </button>
                     </div>
-                  </div>
+                  </form>
                 </section>
 
                 <section className="px-5 py-5">
@@ -626,11 +641,20 @@ export function ProviderSettingsDialog({
                             </div>
                             <div className="relative">
                               <input
-                                type={customModelApiKeyVisible ? 'text' : 'password'}
+                                name="custom_model_api_key"
+                                autoComplete="off"
+                                spellCheck={false}
+                                type="text"
                                 value={draft.apiKey}
                                 onChange={(event) => updateDraft({ apiKey: event.target.value })}
                                 placeholder="请输入这个自定义模型专属的 API Key"
-                                className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 pr-11 text-[14px] text-gray-900 outline-none transition focus:border-gray-300 dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-100 dark:focus:border-gray-500"
+                                data-secret-masked={customModelApiKeyVisible ? 'false' : 'true'}
+                                className={secretInputClassName}
+                                style={
+                                  customModelApiKeyVisible
+                                    ? undefined
+                                    : ({ WebkitTextSecurity: 'disc' } as CSSProperties)
+                                }
                               />
                               <button
                                 type="button"
