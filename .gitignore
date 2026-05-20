@@ -6,6 +6,7 @@ target
 .env
 docker/.env
 docker/.env.*
+docker/.env.prod
 !docker/.env.example
 docker/DEPLOY.md
 docker/data/
@@ -14,3 +15,4 @@ docker/data-test/
 docker/nginx/ssl/localhost/
 docker/nginx/acme/*
 !docker/nginx/acme/.gitkeep
+data/
