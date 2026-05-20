@@ -1,4 +1,5 @@
-import { Bot, Sparkles } from 'lucide-react'
+import { Claude, Gemini, OpenAI } from '@lobehub/icons'
+import { Bot } from 'lucide-react'
 import clsx from 'clsx'
 
 type ModelAvatarProps = {
@@ -6,32 +7,25 @@ type ModelAvatarProps = {
   size?: number
 }
 
-type AvatarTone = {
-  className: string
-  label: string
-}
-
-const MODEL_TONES: Record<string, AvatarTone> = {
-  claude: {
-    className: 'bg-[#f3dfcf] text-[#7a3b12] dark:bg-[#5b341a] dark:text-[#ffd6b5]',
-    label: 'Cl',
-  },
-  gemini: {
-    className: 'bg-[#dfe8ff] text-[#2451d1] dark:bg-[#1f316f] dark:text-[#c9d7ff]',
-    label: 'Ge',
-  },
-  openai: {
-    className: 'bg-[#dff5ea] text-[#117a4b] dark:bg-[#163c2f] dark:text-[#c7f6df]',
-    label: 'AI',
-  },
-}
-
-function resolveTone(model: string) {
+function renderKnownProviderAvatar(model: string, size: number) {
   const normalized = model.trim().toLowerCase()
-  return MODEL_TONES[normalized]
+
+  if (normalized === 'openai') {
+    return <OpenAI.Avatar size={size} type="gpt5" />
+  }
+
+  if (normalized === 'claude') {
+    return <Claude.Avatar size={size} />
+  }
+
+  if (normalized === 'gemini') {
+    return <Gemini.Avatar size={size} />
+  }
+
+  return null
 }
 
-function resolveLabel(model: string) {
+function resolveFallbackLabel(model: string) {
   const normalized = model.trim()
   if (!normalized) {
     return null
@@ -41,17 +35,18 @@ function resolveLabel(model: string) {
 }
 
 export function ModelAvatar({ model, size = 16 }: ModelAvatarProps) {
-  const tone = resolveTone(model)
-  const fallbackLabel = resolveLabel(model)
+  const knownAvatar = renderKnownProviderAvatar(model, size)
+  if (knownAvatar) {
+    return knownAvatar
+  }
+
+  const fallbackLabel = resolveFallbackLabel(model)
   const dimension = `${size}px`
 
   return (
     <span
       className={clsx(
-        'inline-flex shrink-0 items-center justify-center rounded-full border border-black/5 font-semibold shadow-sm',
-        tone
-          ? tone.className
-          : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
+        'inline-flex shrink-0 items-center justify-center rounded-full border border-black/5 bg-gray-100 font-semibold text-gray-600 shadow-sm dark:bg-gray-800 dark:text-gray-300',
       )}
       style={{
         width: dimension,
@@ -61,12 +56,8 @@ export function ModelAvatar({ model, size = 16 }: ModelAvatarProps) {
       }}
       aria-hidden="true"
     >
-      {tone ? (
-        tone.label
-      ) : fallbackLabel ? (
+      {fallbackLabel ? (
         fallbackLabel
-      ) : size >= 20 ? (
-        <Sparkles size={Math.max(12, Math.floor(size * 0.65))} strokeWidth={2} />
       ) : (
         <Bot size={Math.max(10, Math.floor(size * 0.65))} strokeWidth={2} />
       )}

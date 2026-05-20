@@ -421,7 +421,7 @@ export function ChatComposer({
               </button>
 
               {modelMenuOpen && (
-                <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+84px)] right-3 z-50 w-[min(58vw,224px)] overflow-hidden rounded-[18px] border border-gray-100 bg-white shadow-[0_16px_36px_rgba(0,0,0,0.12)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_16px_36px_rgba(0,0,0,0.34)] sm:absolute sm:bottom-full sm:right-0 sm:mb-2 sm:w-[420px] sm:max-w-[calc(100vw-32px)]">
+                <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+84px)] right-3 z-50 w-[min(58vw,224px)] overflow-hidden rounded-[18px] border border-gray-100 bg-white shadow-[0_16px_36px_rgba(0,0,0,0.12)] dark:border-gray-700 dark:bg-[#1e1e1e] dark:shadow-[0_16px_36px_rgba(0,0,0,0.34)] sm:absolute sm:bottom-full sm:right-0 sm:mb-2 sm:w-[340px] sm:max-w-[calc(100vw-32px)]">
                   <div className="flex h-[40px] items-center gap-2 border-b border-gray-100 px-3 dark:border-gray-800 sm:h-[48px] sm:px-4">
                     <Search className="h-4 w-4 flex-shrink-0 text-gray-400" />
                     <input
