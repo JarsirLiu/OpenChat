@@ -18,6 +18,9 @@ const compareTextModels = (left: CatalogModel, right: CatalogModel) => {
   return left.display_name.localeCompare(right.display_name)
 }
 
+const compareImageTools = (left: CatalogTool, right: CatalogTool) =>
+  left.display_name.localeCompare(right.display_name)
+
 interface UseModelCatalogParams {
   currentUserId: string | null
   sessionId: string
@@ -77,9 +80,9 @@ export function useModelCatalog({
       const nextTextModels = modelsPayload
         .filter((model) => model.type === 'text' || model.type === 'multimodal')
         .sort(compareTextModels)
-      const nextImageTools = toolsPayload.filter(
-        (tool) => tool.type === 'image' && tool.available !== false,
-      )
+      const nextImageTools = toolsPayload
+        .filter((tool) => tool.type === 'image')
+        .sort(compareImageTools)
 
       setTextModels(nextTextModels)
       setImageTools(nextImageTools)

@@ -11,11 +11,13 @@ pub use access::{
     ResolveToolAccessFuture, ToolAccessDecision, ToolAccessOutcome, ToolAccessRequirement,
     ToolAccessResolver, ToolAccessService, ToolCapability,
 };
-pub use catalog::CatalogTool;
+pub use catalog::{CatalogTool, ImageToolDefaults};
 pub use context::{ToolExecutionResult, ToolInvocation};
 pub use definition::{ToolDefinition, ToolHandlerKind, ToolInputMode};
 pub use executor::ToolExecutor;
-pub(crate) use image_generation::ImageGenerationRequest;
 pub use image_generation::{GeneratedImage, ImageGenerationToolHandler, ImageRuntime};
+pub(crate) use image_generation::{
+    ImageGenerationRequest, ImageToolOperation, ResolvedToolImageInput,
+};
 pub use registry::ToolRegistry;
 pub use spec::{ToolFunctionSpec, ToolSpec};

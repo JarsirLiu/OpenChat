@@ -59,5 +59,48 @@
       "custom": false
     }
   ],
-  "tools": []
+  "tools": [
+    {
+      "model_config_id": "openchat:image:gpt-image-2",
+      "model": "gpt-image-2",
+      "id": "image_gen_gpt_image_2",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "source": "openchat",
+      "type": "image",
+      "display_name": "GPT Image 2",
+      "default_size": "1024x1024",
+      "default_quality": "auto",
+      "default_n": 1
+    },
+    {
+      "model_config_id": "openchat:image:gpt-image-2-2k",
+      "model": "gpt-image-2-2k",
+      "id": "image_gen_gpt_image_2_2k",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "source": "openchat",
+      "type": "image",
+      "display_name": "GPT Image 2 2K",
+      "default_size": "1024x1024",
+      "default_quality": "auto",
+      "default_n": 1
+    },
+    {
+      "model_config_id": "openchat:image:gpt-image-2-4k",
+      "model": "gpt-image-2-4k",
+      "id": "image_gen_gpt_image_2_4k",
+      "provider": "openai",
+      "runtime_provider": "openai_compatible",
+      "display_provider": "",
+      "source": "openchat",
+      "type": "image",
+      "display_name": "GPT Image 2 4K",
+      "default_size": "1024x1024",
+      "default_quality": "auto",
+      "default_n": 1
+    }
+  ]
 }

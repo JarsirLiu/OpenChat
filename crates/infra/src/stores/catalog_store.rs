@@ -58,6 +58,12 @@ pub struct CatalogToolRecord {
     #[serde(rename = "type")]
     pub tool_type: String,
     pub display_name: String,
+    #[serde(default)]
+    pub default_size: Option<String>,
+    #[serde(default)]
+    pub default_quality: Option<String>,
+    #[serde(default)]
+    pub default_n: Option<i64>,
 }
 
 #[derive(Clone)]
@@ -162,8 +168,8 @@ impl CatalogStore {
                     sqlx::query(
                         r#"
                         INSERT INTO catalog_tools
-                        (model_config_id, model, id, provider, runtime_provider, display_provider, source, tool_type, display_name)
-                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                        (model_config_id, model, id, provider, runtime_provider, display_provider, source, tool_type, display_name, default_size, default_quality, default_n)
+                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
                         "#,
                     )
                     .bind(tool.model_config_id.clone())
@@ -175,6 +181,9 @@ impl CatalogStore {
                     .bind(tool.source.clone())
                     .bind(tool.tool_type.clone())
                     .bind(tool.display_name.clone())
+                    .bind(tool.default_size.clone())
+                    .bind(tool.default_quality.clone())
+                    .bind(tool.default_n)
                     .execute(pool)
                     .await?;
                 }
@@ -182,8 +191,8 @@ impl CatalogStore {
                     sqlx::query(
                         r#"
                         INSERT INTO catalog_tools
-                        (model_config_id, model, id, provider, runtime_provider, display_provider, source, tool_type, display_name)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        (model_config_id, model, id, provider, runtime_provider, display_provider, source, tool_type, display_name, default_size, default_quality, default_n)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                         "#,
                     )
                     .bind(tool.model_config_id)
@@ -195,6 +204,9 @@ impl CatalogStore {
                     .bind(tool.source)
                     .bind(tool.tool_type)
                     .bind(tool.display_name)
+                    .bind(tool.default_size)
+                    .bind(tool.default_quality)
+                    .bind(tool.default_n)
                     .execute(pool)
                     .await?;
                 }
@@ -276,7 +288,7 @@ impl CatalogStore {
             DatabasePool::Compat(pool) => {
                 let rows = sqlx::query(
                     r#"
-                    SELECT model_config_id, model, id, provider, runtime_provider, display_provider, source, tool_type, display_name
+                    SELECT model_config_id, model, id, provider, runtime_provider, display_provider, source, tool_type, display_name, default_size, default_quality, default_n
                     FROM catalog_tools
                     ORDER BY display_provider, display_name
                     "#,
@@ -296,13 +308,16 @@ impl CatalogStore {
                         source: row.get("source"),
                         tool_type: row.get("tool_type"),
                         display_name: row.get("display_name"),
+                        default_size: row.get("default_size"),
+                        default_quality: row.get("default_quality"),
+                        default_n: row.get("default_n"),
                     })
                     .collect())
             }
             DatabasePool::Postgres(pool) => {
                 let rows = sqlx::query(
                     r#"
-                    SELECT model_config_id, model, id, provider, runtime_provider, display_provider, source, tool_type, display_name
+                    SELECT model_config_id, model, id, provider, runtime_provider, display_provider, source, tool_type, display_name, default_size, default_quality, default_n
                     FROM catalog_tools
                     ORDER BY display_provider, display_name
                     "#,
@@ -322,6 +337,9 @@ impl CatalogStore {
                         source: row.get("source"),
                         tool_type: row.get("tool_type"),
                         display_name: row.get("display_name"),
+                        default_size: row.get("default_size"),
+                        default_quality: row.get("default_quality"),
+                        default_n: row.get("default_n"),
                     })
                     .collect())
             }

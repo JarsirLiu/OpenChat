@@ -20,6 +20,24 @@ pub struct AccountService {
     custom_model_service: Arc<CustomModelService>,
 }
 
+const SUPPORTED_BUILTIN_IMAGE_TOOL_CONFIGS: &[(&str, &str, &str)] = &[
+    (
+        "openchat:image:gpt-image-2",
+        "image_gen_gpt_image_2",
+        "gpt-image-2",
+    ),
+    (
+        "openchat:image:gpt-image-2-2k",
+        "image_gen_gpt_image_2_2k",
+        "gpt-image-2-2k",
+    ),
+    (
+        "openchat:image:gpt-image-2-4k",
+        "image_gen_gpt_image_2_4k",
+        "gpt-image-2-4k",
+    ),
+];
+
 impl AccountService {
     pub fn new(
         auth_service: Arc<AuthService>,
@@ -172,6 +190,8 @@ impl AccountService {
             });
         }
 
+        validate_builtin_image_tool(tool)?;
+
         self.model_provider_service
             .resolve_image_access(user_id, tool)
             .await
@@ -203,9 +223,75 @@ impl AccountService {
             });
         }
 
+        validate_builtin_image_requirement(requirement)?;
+
         self.model_provider_service
             .resolve_tool_access(user_id, requirement)
             .await
+    }
+}
+
+fn validate_builtin_image_tool(tool: &TurnToolRef) -> Result<(), ChatServiceError> {
+    if tool.tool_type != "image" {
+        return Err(ChatServiceError::model_unavailable(
+            "Selected image tool type is not supported",
+        ));
+    }
+
+    if tool.source != "openchat"
+        || tool.provider != "openai"
+        || tool.runtime_provider != "openai_compatible"
+    {
+        return Err(ChatServiceError::model_unavailable(
+            "Selected built-in image tool is not available",
+        ));
+    }
+
+    let is_supported = SUPPORTED_BUILTIN_IMAGE_TOOL_CONFIGS.iter().any(
+        |(model_config_id, tool_id, model_name)| {
+            tool.model_config_id == *model_config_id
+                && tool.id == *tool_id
+                && tool.model_name == *model_name
+        },
+    );
+
+    if is_supported {
+        Ok(())
+    } else {
+        Err(ChatServiceError::model_unavailable(
+            "Selected built-in image tool is not available",
+        ))
+    }
+}
+
+fn validate_builtin_image_requirement(
+    requirement: &ToolAccessRequirement,
+) -> Result<(), ChatServiceError> {
+    if requirement.tool_type != "image" {
+        return Err(ChatServiceError::model_unavailable(
+            "Selected image tool type is not supported",
+        ));
+    }
+
+    if requirement.source != "openchat"
+        || requirement.provider_key != "openai"
+        || requirement.runtime_provider != "openai_compatible"
+    {
+        return Err(ChatServiceError::model_unavailable(
+            "Selected built-in image tool is not available",
+        ));
+    }
+
+    let is_supported = SUPPORTED_BUILTIN_IMAGE_TOOL_CONFIGS
+        .iter()
+        .any(|(model_config_id, _, _)| requirement.model_config_id == *model_config_id);
+
+    if is_supported {
+        Ok(())
+    } else {
+        Err(ChatServiceError::model_unavailable(
+            "Selected built-in image tool is not available",
+        ))
     }
 }
 

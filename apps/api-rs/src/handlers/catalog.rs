@@ -192,6 +192,7 @@ pub async fn list_tools(
             source: "custom".to_string(),
             tool_type: "image".to_string(),
             display_name: custom.model_name,
+            image_defaults: None,
         });
     }
 

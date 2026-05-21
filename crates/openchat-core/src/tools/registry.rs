@@ -1,11 +1,12 @@
 use serde_json::json;
 
 use crate::{
-    CatalogTool, ChatServiceError, ToolFunctionSpec, ToolSpec, TurnToolRef,
+    CatalogTool, ChatServiceError, ImageToolDefaults, ToolFunctionSpec, ToolSpec, TurnToolRef,
 };
 
 use super::access::{ToolAccessRequirement, ToolCapability};
 use super::definition::{ToolDefinition, ToolHandlerKind, ToolInputMode};
+use super::image_generation::supported_image_size_description;
 
 #[derive(Clone, Default)]
 pub struct ToolRegistry;
@@ -56,7 +57,7 @@ impl ToolRegistry {
                         "Generate or edit images with {}. Use this when the user explicitly asks to create, draw, generate, or modify an image.",
                         tool.display_name
                     ),
-                    parameters: image_generation_parameters(definition.input_mode),
+                    parameters: image_generation_parameters(definition.input_mode, tool.image_defaults.as_ref()),
                 },
             }),
         }
@@ -86,11 +87,17 @@ impl ToolRegistry {
         self.definition_for_tool_type(tool.tool_type.as_str())
     }
 
-    fn definition_for_turn_tool(&self, tool: &TurnToolRef) -> Result<ToolDefinition, ChatServiceError> {
+    fn definition_for_turn_tool(
+        &self,
+        tool: &TurnToolRef,
+    ) -> Result<ToolDefinition, ChatServiceError> {
         self.definition_for_tool_type(tool.tool_type.as_str())
     }
 
-    fn definition_for_tool_type(&self, tool_type: &str) -> Result<ToolDefinition, ChatServiceError> {
+    fn definition_for_tool_type(
+        &self,
+        tool_type: &str,
+    ) -> Result<ToolDefinition, ChatServiceError> {
         match tool_type {
             "image" => Ok(ToolDefinition {
                 tool_type: "image",
@@ -106,7 +113,15 @@ impl ToolRegistry {
     }
 }
 
-fn image_generation_parameters(input_mode: ToolInputMode) -> serde_json::Value {
+fn image_generation_parameters(
+    input_mode: ToolInputMode,
+    defaults: Option<&ImageToolDefaults>,
+) -> serde_json::Value {
+    let default_size = defaults
+        .map(|item| item.size.as_str())
+        .unwrap_or("1024x1024");
+    let default_quality = defaults.map(|item| item.quality.as_str()).unwrap_or("auto");
+    let default_n = defaults.map(|item| item.n).unwrap_or(1);
     let mut properties = serde_json::Map::from_iter([
         (
             "prompt".to_string(),
@@ -119,37 +134,27 @@ fn image_generation_parameters(input_mode: ToolInputMode) -> serde_json::Value {
             "size".to_string(),
             json!({
                 "type": "string",
-                "description": "Optional. Output size such as 1024x1024, 1536x1024, or 1024x1536."
-            }),
-        ),
-        (
-            "aspect_ratio".to_string(),
-            json!({
-                "type": "string",
-                "description": "Optional. Preferred aspect ratio such as 1:1, 16:9, 4:3, 3:4, or 9:16."
+                "default": default_size,
+                "description": supported_image_size_description(default_size)
             }),
         ),
         (
             "quality".to_string(),
             json!({
                 "type": "string",
-                "description": "Optional. Image quality hint such as low, medium, high, or hd."
+                "enum": ["auto", "low", "medium", "high"],
+                "default": default_quality,
+                "description": "Optional. Image quality hint such as auto, low, medium, or high. This controls visual fidelity, not output dimensions."
             }),
         ),
         (
-            "background".to_string(),
-            json!({
-                "type": "string",
-                "description": "Optional. Background hint such as transparent, white, or solid."
-            }),
-        ),
-        (
-            "count".to_string(),
+            "n".to_string(),
             json!({
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 4,
-                "description": "Optional. Number of images to generate. Defaults to 1."
+                "maximum": 8,
+                "default": default_n,
+                "description": "Optional. Number of images to generate. Defaults to the model profile and supports up to 8."
             }),
         ),
     ]);
@@ -158,36 +163,22 @@ fn image_generation_parameters(input_mode: ToolInputMode) -> serde_json::Value {
         let description = if matches!(input_mode, ToolInputMode::RequiredImages) {
             "Required. Reference image ids or URLs to use as edit inputs."
         } else {
-            "Optional. Reference image ids or URLs to use as edit inputs."
+            "Optional. Reference image ids or URLs to use as image inputs."
         };
         properties.insert(
             "input_images".to_string(),
             json!({
                 "type": "array",
                 "items": { "type": "string" },
-                "description": description
-            }),
-        );
-        properties.insert(
-            "image".to_string(),
-            json!({
-                "type": "array",
-                "items": { "type": "string" },
-                "description": "Alias for input_images."
+                "description": format!("{description} These may be current attachment ids, previously generated image ids, external URLs, or data URLs.")
             }),
         );
     }
 
-    let required = if matches!(input_mode, ToolInputMode::RequiredImages) {
-        json!(["prompt", "input_images"])
-    } else {
-        json!(["prompt"])
-    };
-
     json!({
         "type": "object",
         "properties": properties,
-        "required": required,
+        "required": ["prompt"],
         "additionalProperties": false
     })
 }

@@ -1,8 +1,9 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use crate::{
-    tools::ImageGenerationRequest, ChatServiceError, GeneratedImage, ImageRuntime,
-    ModelEventStream, OpenAiCompatibleRuntime, TurnModelRef, TurnPlan, TurnToolRef,
+    tools::{ImageGenerationRequest, ImageToolOperation, ResolvedToolImageInput},
+    ChatServiceError, GeneratedImage, ImageRuntime, ModelEventStream, OpenAiCompatibleRuntime,
+    TurnModelRef, TurnPlan, TurnToolRef,
 };
 
 pub type ResolveTextAccessFuture<'a> =
@@ -126,6 +127,7 @@ where
         user_id: &str,
         tool: &TurnToolRef,
         request: &ImageGenerationRequest,
+        input_images: &[ResolvedToolImageInput],
     ) -> Result<Vec<GeneratedImage>, ChatServiceError> {
         let access = self
             .access_resolver
@@ -133,11 +135,18 @@ where
             .await?;
 
         match access.runtime_provider.as_str() {
-            "openai_compatible" => {
-                self.openai_compatible_runtime
-                    .generate_image(request, &access)
-                    .await
-            }
+            "openai_compatible" => match request.operation {
+                ImageToolOperation::Generate => {
+                    self.openai_compatible_runtime
+                        .generate_image(request, &access)
+                        .await
+                }
+                ImageToolOperation::Reference => {
+                    self.openai_compatible_runtime
+                        .edit_image(request, input_images, &access)
+                        .await
+                }
+            },
             provider => Err(ChatServiceError::new(
                 501,
                 format!("Image runtime provider `{provider}` is not implemented yet"),

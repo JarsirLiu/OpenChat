@@ -85,11 +85,19 @@ pub fn value_to_outbound_content_parts(value: Value) -> Vec<OutboundContentPart>
                         .get("argumentsText")
                         .and_then(Value::as_str)
                         .map(str::to_string),
-                    result: part.get("result").cloned().unwrap_or_else(|| serde_json::json!({})),
+                    result: part
+                        .get("result")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!({})),
                     media: part
                         .get("media")
                         .and_then(Value::as_array)
-                        .map(|items| items.iter().filter_map(parse_media_asset).collect::<Vec<_>>())
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(parse_media_asset)
+                                .collect::<Vec<_>>()
+                        })
                         .unwrap_or_default(),
                 })),
                 _ => None,

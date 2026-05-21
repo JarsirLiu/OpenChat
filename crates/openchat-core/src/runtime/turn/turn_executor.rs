@@ -3,11 +3,9 @@ use std::sync::Arc;
 use openchat_infra::stores::ChatStore;
 
 use crate::{
-    user_content_to_json,
     runtime::turn::{
         event_builder::{
-            build_message_item,
-            build_message_started_event, build_reasoning_completed_event,
+            build_message_item, build_message_started_event, build_reasoning_completed_event,
             build_reasoning_item, build_turn, build_turn_started_event, send_event,
         },
         helpers::now_string,
@@ -17,9 +15,9 @@ use crate::{
         tool_call_coordinator::ToolCallCoordinator,
         turn_loop::{TurnLoop, TurnLoopExit},
     },
-    ActiveTurnHandle, ImageModelAccessResolver, ModelProviderRuntime, SessionRuntime,
-    TextModelAccessResolver, ToolAccessResolver,
-    ToolExecutor, TurnPlan, TurnRunner, TurnTerminalReason,
+    user_content_to_json, ActiveTurnHandle, ImageModelAccessResolver, ModelProviderRuntime,
+    SessionRuntime, TextModelAccessResolver, ToolAccessResolver, ToolExecutor, TurnPlan,
+    TurnRunner, TurnTerminalReason,
 };
 
 fn now_millis() -> u128 {

@@ -1,4 +1,9 @@
-use axum::{extract::{Path, State}, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 use axum_extra::extract::cookie::CookieJar;
 use openchat_account_core::{
     AuthError, AuthUser, CreateUserCustomModelDto, LoginRequestDto, RegisterRequestDto,

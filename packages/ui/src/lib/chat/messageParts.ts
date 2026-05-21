@@ -4,6 +4,7 @@ import type {
   MessageContentPart,
   ToolCallSummary,
 } from '@openchat/protocol'
+import { isImageToolCall } from './toolCallMeta'
 
 export interface RenderTextPart {
   type: 'text'
@@ -62,10 +63,13 @@ export const buildMessageParts = (
     }
   }
 
-  if (message.toolCalls?.length) {
+  const visibleToolCalls =
+    message.toolCalls?.filter((toolCall) => !isImageToolCall(toolCall, toolState[toolCall.id])) ?? []
+
+  if (visibleToolCalls.length) {
     parts.push({
       type: 'tool_call_group',
-      toolCalls: message.toolCalls,
+      toolCalls: visibleToolCalls,
       toolState,
     })
   }

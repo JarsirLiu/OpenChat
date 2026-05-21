@@ -78,11 +78,28 @@ async fn validate_tool_selection(
                     .clone()
                     .unwrap_or_else(|| "openchat".to_string()),
                 tool_type: selected_tool.tool_type.clone(),
+                image_defaults: None,
             },
         )
         .await
         .map(|_| ())
         .map_err(ErrorResponseDto::from_chat_service_error)
+}
+
+fn validate_selected_tool_list(selected_tools: &[SelectedToolDto]) -> Result<(), ErrorResponseDto> {
+    let image_tool_count = selected_tools
+        .iter()
+        .filter(|tool| tool.tool_type == "image")
+        .count();
+
+    if image_tool_count > 1 {
+        return Err(ErrorResponseDto::from_code(
+            VALIDATION_ERROR,
+            "Only one image generation model can be selected for a turn",
+        ));
+    }
+
+    Ok(())
 }
 
 async fn normalize_attachments(
@@ -135,6 +152,10 @@ pub async fn send_message(
     }
 
     if let Some(selected_tools) = payload.tool_list.as_ref() {
+        if let Err(error) = validate_selected_tool_list(selected_tools) {
+            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+        }
+
         for selected_tool in selected_tools {
             if let Err(error) = validate_tool_selection(&state, auth.user_id(), selected_tool).await
             {

@@ -1,4 +1,4 @@
-use crate::OutboundMessage;
+use crate::{ImageToolDefaults, OutboundMessage};
 
 #[derive(Clone)]
 pub struct TurnModelRef {
@@ -21,6 +21,7 @@ pub struct TurnToolRef {
     pub provider: String,
     pub source: String,
     pub tool_type: String,
+    pub image_defaults: Option<ImageToolDefaults>,
 }
 
 #[derive(Clone)]

@@ -4,11 +4,12 @@ use openchat_infra::stores::{PersistedSession, PersistedTurnPage};
 use tokio::sync::broadcast;
 
 use crate::{
-    build_session_context, collect_attached_tool_calls,
+    build_session_context, collect_attached_tool_calls, normalize_session_history,
+    parse_media_assets_json,
     protocol::{MessageSnapshotDto, ToolCallSummaryDto},
-    normalize_session_history, parse_media_assets_json, session_history_window_size,
-    tool_result_to_content_json, ActiveTurnHandle, ChatRequest, ChatServiceError, OutboundToolResult,
-    SessionContext, SessionRuntime, StreamEventPayload, TurnAccepted, TurnPlan,
+    session_history_window_size, tool_result_to_content_json, ActiveTurnHandle, ChatRequest,
+    ChatServiceError, OutboundToolResult, SessionContext, SessionRuntime, StreamEventPayload,
+    TurnAccepted, TurnPlan,
 };
 
 use super::ports::{ActiveTurnRegistryPort, ChatRepository, SessionRuntimeRegistry};
@@ -236,36 +237,35 @@ impl ChatService {
                             message.turn_id.as_str(),
                             &tool_calls,
                         )
-                            .iter()
-                            .map(|tool_call| {
-                                let media =
-                                    parse_media_assets_json(tool_call.media_json.as_deref());
-                                ToolCallSummaryDto {
-                                    id: tool_call.id.clone(),
-                                    name: tool_call.tool_name.clone(),
-                                    display_name: tool_call.tool_display_name.clone(),
-                                    parent_item_id: tool_call
-                                        .parent_item_id
-                                        .clone()
-                                        .or_else(|| Some(message.id.clone())),
+                        .iter()
+                        .map(|tool_call| {
+                            let media = parse_media_assets_json(tool_call.media_json.as_deref());
+                            ToolCallSummaryDto {
+                                id: tool_call.id.clone(),
+                                name: tool_call.tool_name.clone(),
+                                display_name: tool_call.tool_display_name.clone(),
+                                parent_item_id: tool_call
+                                    .parent_item_id
+                                    .clone()
+                                    .or_else(|| Some(message.id.clone())),
+                                arguments_text: tool_call.arguments_text.clone(),
+                                status: Some(tool_call.status.clone()),
+                                content: tool_result_to_content_json(&OutboundToolResult {
+                                    tool_call_id: tool_call.id.clone(),
+                                    tool_name: tool_call.tool_name.clone(),
+                                    tool_display_name: tool_call.tool_display_name.clone(),
+                                    status: tool_call.status.clone(),
                                     arguments_text: tool_call.arguments_text.clone(),
-                                    status: Some(tool_call.status.clone()),
-                                    content: tool_result_to_content_json(&OutboundToolResult {
-                                        tool_call_id: tool_call.id.clone(),
-                                        tool_name: tool_call.tool_name.clone(),
-                                        tool_display_name: tool_call.tool_display_name.clone(),
-                                        status: tool_call.status.clone(),
-                                        arguments_text: tool_call.arguments_text.clone(),
-                                        result: tool_call
-                                            .result_json
-                                            .as_deref()
-                                            .and_then(|value| serde_json::from_str(value).ok())
-                                            .unwrap_or_else(|| serde_json::json!({})),
-                                        media,
-                                    }),
-                                }
-                            })
-                            .collect();
+                                    result: tool_call
+                                        .result_json
+                                        .as_deref()
+                                        .and_then(|value| serde_json::from_str(value).ok())
+                                        .unwrap_or_else(|| serde_json::json!({})),
+                                    media,
+                                }),
+                            }
+                        })
+                        .collect();
                         if items.is_empty() {
                             None
                         } else {

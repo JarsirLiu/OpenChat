@@ -10,7 +10,8 @@ use openchat_catalog_core::{CatalogModel, CatalogService, CatalogTurnBuilder};
 use openchat_core::{
     ActiveTurnRegistry, ChatService, ChatServiceError, ImageProviderRuntime, ImageRuntime,
     InMemorySessionStore, MediaStore, ModelMediaUrlResolver, ModelProviderRuntime,
-    OpenAiCompatibleRuntime, OpenChatTurnExecutor, StoredMedia, ToolAccessService, ToolExecutor,
+    OpenAiCompatibleRuntime, OpenChatTurnExecutor, RetrievedMedia, StoredMedia, ToolAccessService,
+    ToolExecutor,
 };
 use openchat_infra::db::Database;
 use openchat_infra::storage::{
@@ -135,6 +136,9 @@ impl AppMediaStore {
 
     async fn data_uri_for_key(&self, key: &str) -> Option<String> {
         let media = self.get_bytes(key).await.ok().flatten()?;
+        if media.bytes.is_empty() {
+            return None;
+        }
         Some(format!(
             "data:{};base64,{}",
             media.content_type,
@@ -159,6 +163,30 @@ impl MediaStore for AppMediaStore {
                 .await
         })
     }
+
+    fn get_bytes<'a>(
+        &'a self,
+        key: &'a str,
+    ) -> core::pin::Pin<
+        Box<
+            dyn core::future::Future<Output = Result<Option<RetrievedMedia>, ChatServiceError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let media = AppMediaStore::get_bytes(self, key)
+                .await
+                .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
+
+            Ok(media.map(|item| RetrievedMedia {
+                key: item.key,
+                bytes: item.bytes,
+                content_type: item.content_type,
+                size_bytes: item.size_bytes,
+            }))
+        })
+    }
 }
 
 #[async_trait]
@@ -171,6 +199,7 @@ impl ModelMediaUrlResolver for AppMediaStore {
             if let Some(data_uri) = self.data_uri_for_key(media_id).await {
                 return data_uri;
             }
+            return String::new();
         }
         self.signed_model_media_url(media_id)
     }
@@ -374,5 +403,19 @@ fn map_catalog_tool(record: CatalogToolRecord) -> openchat_core::CatalogTool {
         source: record.source,
         tool_type: record.tool_type,
         display_name: record.display_name,
+        image_defaults: match (
+            record.default_size,
+            record.default_quality,
+            record.default_n,
+        ) {
+            (Some(size), Some(quality), Some(n)) if n > 0 => {
+                Some(openchat_core::ImageToolDefaults {
+                    size,
+                    quality,
+                    n: n as u32,
+                })
+            }
+            _ => None,
+        },
     }
 }

@@ -2,14 +2,13 @@ use openchat_infra::stores::{ChatStore, PersistedToolCall};
 use serde_json::json;
 
 use crate::{
-    tool_result_to_content_json, OutboundToolResult,
     runtime::turn::{
         event_builder::{build_tool_call_completed_event, build_tool_call_item, send_event},
         helpers::now_string,
         loop_step_result::CompletedToolCall,
     },
-    ImageModelAccessResolver, SessionRuntime, ToolAccessResolver, ToolExecutionResult,
-    ToolExecutor, ToolInvocation, TurnPlan,
+    tool_result_to_content_json, ImageModelAccessResolver, OutboundToolResult, SessionRuntime,
+    ToolAccessResolver, ToolExecutionResult, ToolExecutor, ToolInvocation, TurnPlan,
 };
 
 pub(crate) struct ToolCallCoordinator<R> {
@@ -80,6 +79,8 @@ where
                 turn_id: turn_id.to_string(),
                 tool_call_id: tool_call_id.to_string(),
                 arguments_text: arguments_text.clone(),
+                current_attachments: plan.attachments.clone(),
+                history: plan.history.clone(),
                 tool: tool.clone(),
             })
             .await;

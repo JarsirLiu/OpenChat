@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::{MediaAsset, TurnToolRef};
+use crate::{MediaAsset, OutboundMessage, TurnAttachment, TurnToolRef};
 
 #[derive(Clone)]
 pub struct ToolInvocation {
@@ -9,6 +9,8 @@ pub struct ToolInvocation {
     pub turn_id: String,
     pub tool_call_id: String,
     pub arguments_text: String,
+    pub current_attachments: Vec<TurnAttachment>,
+    pub history: Vec<OutboundMessage>,
     pub tool: TurnToolRef,
 }
 

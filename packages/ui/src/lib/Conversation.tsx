@@ -3,7 +3,9 @@ import type { ChatRuntimeState } from '@openchat/chat-core'
 import type { ChatMessage, TurnTerminalReasonCode } from '@openchat/protocol'
 import { Bot } from 'lucide-react'
 import { ChatMessageItem } from './chat/ChatMessageItem'
+import { ImageGenerationCard } from './chat/ImageGenerationCard'
 import { ContentLoading } from './chat/parts/ContentLoading'
+import { isImageToolCall } from './chat/toolCallMeta'
 
 interface ConversationProps {
   state: ChatRuntimeState
@@ -23,6 +25,33 @@ const getMessageKey = (message: ChatMessage) => {
   }
 
   return `${message.role}:${message.id}`
+}
+
+const splitAssistantToolCalls = (
+  message: ChatMessage,
+  toolState: ChatRuntimeState['toolCalls'],
+) => {
+  const imageToolCalls = (message.toolCalls ?? []).filter((toolCall) =>
+    isImageToolCall(toolCall, toolState[toolCall.id]),
+  )
+  const contentToolCalls = (message.toolCalls ?? []).filter((toolCall) =>
+    !isImageToolCall(toolCall, toolState[toolCall.id]),
+  )
+
+  return {
+    imageToolCalls,
+    contentToolCalls,
+  }
+}
+
+const hasRenderableAssistantContent = (message: ChatMessage, reasoningMessage?: ChatMessage) => {
+  const hasText = message.content.some(
+    (part) => part.type === 'text' && part.text.trim().length > 0,
+  )
+  const hasVisibleToolCalls = (message.toolCalls?.length ?? 0) > 0
+  const hasReasoning = Boolean(reasoningMessage)
+
+  return hasText || hasVisibleToolCalls || hasReasoning || message.status === 'in_progress'
 }
 
 const isTimeoutErrorCode = (code: TurnTerminalReasonCode | null | undefined) =>
@@ -81,15 +110,45 @@ export function Conversation({ state, requestPending = false }: ConversationProp
       const next = state.messages[index + 1]
 
       if (next?.role === 'assistant' && next.turnId === message.turnId) {
-        items.push(
-          <ChatMessageItem
-            key={`turn:${message.turnId}`}
-            message={next}
-            reasoningMessage={message}
-            isReasoningActive={isTurnReasoningActive(state, message.turnId)}
-            toolState={state.toolCalls}
-          />,
-        )
+        const { imageToolCalls, contentToolCalls } = splitAssistantToolCalls(next, state.toolCalls)
+        const assistantMessage =
+          contentToolCalls.length === (next.toolCalls?.length ?? 0)
+            ? next
+            : { ...next, toolCalls: contentToolCalls }
+
+        if (hasRenderableAssistantContent(assistantMessage, message)) {
+          items.push(
+            <ChatMessageItem
+              key={`turn:${message.turnId}`}
+              message={assistantMessage}
+              reasoningMessage={message}
+              isReasoningActive={isTurnReasoningActive(state, message.turnId)}
+              toolState={state.toolCalls}
+            />,
+          )
+        } else {
+          items.push(
+            <ChatMessageItem
+              key={getMessageKey(message)}
+              message={message}
+              isReasoningActive={isTurnReasoningActive(state, message.turnId)}
+              toolState={state.toolCalls}
+            />,
+          )
+        }
+
+        imageToolCalls.forEach((toolCall) => {
+          items.push(
+            <ImageGenerationCard
+              key={`image-tool:${toolCall.id}`}
+              toolCall={toolCall}
+              liveState={state.toolCalls[toolCall.id]}
+              startedAt={next.createdAt}
+              completedAt={next.updatedAt}
+            />,
+          )
+        })
+
         index += 1
         continue
       }
@@ -101,6 +160,39 @@ export function Conversation({ state, requestPending = false }: ConversationProp
       previous?.role === 'reasoning' &&
       previous.turnId === message.turnId
     ) {
+      continue
+    }
+
+    if (message.role === 'assistant') {
+      const { imageToolCalls, contentToolCalls } = splitAssistantToolCalls(message, state.toolCalls)
+      const assistantMessage =
+        contentToolCalls.length === (message.toolCalls?.length ?? 0)
+          ? message
+          : { ...message, toolCalls: contentToolCalls }
+
+      if (hasRenderableAssistantContent(assistantMessage)) {
+        items.push(
+          <ChatMessageItem
+            key={getMessageKey(message)}
+            message={assistantMessage}
+            isReasoningActive={isTurnReasoningActive(state, message.turnId)}
+            toolState={state.toolCalls}
+          />,
+        )
+      }
+
+      imageToolCalls.forEach((toolCall) => {
+        items.push(
+          <ImageGenerationCard
+            key={`image-tool:${toolCall.id}`}
+            toolCall={toolCall}
+            liveState={state.toolCalls[toolCall.id]}
+            startedAt={message.createdAt}
+            completedAt={message.updatedAt}
+          />,
+        )
+      })
+
       continue
     }
 

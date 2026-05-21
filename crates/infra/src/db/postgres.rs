@@ -27,6 +27,9 @@ pub(crate) async fn migrate(pool: &PgPool) -> anyhow::Result<()> {
     )
     .await?;
     ensure_postgres_column(pool, "catalog_tools", "model", "TEXT NOT NULL DEFAULT ''").await?;
+    ensure_postgres_column(pool, "catalog_tools", "default_size", "TEXT").await?;
+    ensure_postgres_column(pool, "catalog_tools", "default_quality", "TEXT").await?;
+    ensure_postgres_column(pool, "catalog_tools", "default_n", "BIGINT").await?;
     ensure_postgres_column(pool, "tool_calls", "parent_item_id", "TEXT").await?;
     ensure_postgres_column(pool, "tool_calls", "media_json", "TEXT").await?;
     ensure_postgres_column(pool, "turns", "terminal_reason_code", "TEXT").await?;
@@ -259,6 +262,9 @@ const POSTGRES_MIGRATIONS: &[&str] = &[
       source TEXT NOT NULL,
       tool_type TEXT NOT NULL,
       display_name TEXT NOT NULL,
+      default_size TEXT,
+      default_quality TEXT,
+      default_n BIGINT,
       PRIMARY KEY (model_config_id, id)
     )
     "#,

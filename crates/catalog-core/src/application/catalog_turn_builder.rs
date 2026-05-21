@@ -57,6 +57,16 @@ impl TurnBuilder for CatalogTurnBuilder {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        let image_tool_count = tool_list
+            .iter()
+            .filter(|tool| tool.tool_type == "image")
+            .count();
+        if image_tool_count > 1 {
+            return Err(ChatServiceError::validation(
+                "Only one image generation model can be selected for a turn",
+            ));
+        }
+
         Ok(TurnPlan {
             user_id: request.user_id,
             session_id: request.session_id,
@@ -93,6 +103,7 @@ impl TurnBuilder for CatalogTurnBuilder {
                     provider: tool.provider,
                     source: tool.source,
                     tool_type: tool.tool_type,
+                    image_defaults: tool.image_defaults,
                 })
                 .collect(),
         })
@@ -158,5 +169,6 @@ fn resolve_custom_image_tool(
         source: "custom".to_string(),
         tool_type: "image".to_string(),
         display_name: selected_tool.display_name.clone().unwrap_or(model_name),
+        image_defaults: None,
     })
 }

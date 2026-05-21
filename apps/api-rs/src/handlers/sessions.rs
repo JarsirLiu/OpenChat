@@ -16,6 +16,7 @@ use crate::{
     },
     security::extractors::CurrentUser,
     state::AppState,
+    time::format_millis_timestamp,
 };
 
 fn session_access_denied_response(
@@ -40,8 +41,8 @@ pub async fn list_sessions(
                     id: session.id,
                     title: session.title,
                     status: session.status,
-                    created_at: session.created_at,
-                    updated_at: session.updated_at,
+                    created_at: format_millis_timestamp(session.created_at.as_str()),
+                    updated_at: format_millis_timestamp(session.updated_at.as_str()),
                 })
                 .collect::<Vec<_>>();
             (StatusCode::OK, Json(sessions)).into_response()
@@ -101,8 +102,8 @@ pub async fn get_session(
                     id: session.id,
                     title: session.title,
                     status: session.status,
-                    created_at: session.created_at,
-                    updated_at: session.updated_at,
+                    created_at: format_millis_timestamp(session.created_at.as_str()),
+                    updated_at: format_millis_timestamp(session.updated_at.as_str()),
                 },
                 messages: snapshot
                     .messages
@@ -112,8 +113,8 @@ pub async fn get_session(
                         role: message.role,
                         turn_id: message.turn_id,
                         status: message.status,
-                        created_at: message.created_at,
-                        updated_at: message.updated_at,
+                        created_at: format_millis_timestamp(message.created_at.as_str()),
+                        updated_at: format_millis_timestamp(message.updated_at.as_str()),
                         content: message.content,
                         tool_calls: message
                             .tool_calls
@@ -212,8 +213,8 @@ pub async fn rename_session(
                 id: session.id,
                 title: session.title,
                 status: session.status,
-                created_at: session.created_at,
-                updated_at: session.updated_at,
+                created_at: format_millis_timestamp(session.created_at.as_str()),
+                updated_at: format_millis_timestamp(session.updated_at.as_str()),
             }),
         )
             .into_response(),

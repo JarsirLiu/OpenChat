@@ -5,6 +5,7 @@ mod router;
 mod security;
 mod state;
 mod system_provider_registry;
+mod time;
 mod tracing_setup;
 
 #[tokio::main]

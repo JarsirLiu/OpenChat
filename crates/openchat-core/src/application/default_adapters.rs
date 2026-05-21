@@ -9,7 +9,8 @@ impl ChatRepository for ChatStore {
         &'a self,
         user_id: &'a str,
         session_id: &'a str,
-    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>> {
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>
+    {
         Box::pin(async move { ChatStore::ensure_session(self, user_id, session_id).await })
     }
 
@@ -53,9 +54,9 @@ impl ChatRepository for ChatStore {
             dyn core::future::Future<Output = anyhow::Result<Option<PersistedSession>>> + Send + 'a,
         >,
     > {
-        Box::pin(async move {
-            ChatStore::update_session_title(self, user_id, session_id, title).await
-        })
+        Box::pin(
+            async move { ChatStore::update_session_title(self, user_id, session_id, title).await },
+        )
     }
 
     fn interrupt_running_turn<'a>(
@@ -112,9 +113,7 @@ impl ChatRepository for ChatStore {
                 + 'a,
         >,
     > {
-        Box::pin(async move {
-            ChatStore::list_session_tool_calls(self, user_id, session_id).await
-        })
+        Box::pin(async move { ChatStore::list_session_tool_calls(self, user_id, session_id).await })
     }
 
     fn list_session_messages_for_turns<'a>(
@@ -149,8 +148,7 @@ impl ChatRepository for ChatStore {
         >,
     > {
         Box::pin(async move {
-            ChatStore::list_session_tool_calls_for_turns(self, user_id, session_id, turn_ids)
-                .await
+            ChatStore::list_session_tool_calls_for_turns(self, user_id, session_id, turn_ids).await
         })
     }
 
@@ -159,15 +157,11 @@ impl ChatRepository for ChatStore {
         user_id: &'a str,
         session_id: &'a str,
         active_turn_ids: &'a [String],
-    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>> {
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>
+    {
         Box::pin(async move {
-            ChatStore::reconcile_session_runtime_state(
-                self,
-                user_id,
-                session_id,
-                active_turn_ids,
-            )
-            .await
+            ChatStore::reconcile_session_runtime_state(self, user_id, session_id, active_turn_ids)
+                .await
         })
     }
 }
@@ -208,8 +202,8 @@ impl ActiveTurnRegistryPort for ActiveTurnRegistry {
         &'a self,
         session_id: &'a str,
     ) -> core::pin::Pin<Box<dyn core::future::Future<Output = Vec<String>> + Send + 'a>> {
-        Box::pin(async move {
-            ActiveTurnRegistry::active_turn_ids_for_session(self, session_id).await
-        })
+        Box::pin(
+            async move { ActiveTurnRegistry::active_turn_ids_for_session(self, session_id).await },
+        )
     }
 }

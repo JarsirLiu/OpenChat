@@ -12,52 +12,60 @@ pub fn normalize_session_history(
 ) -> Vec<OutboundMessage> {
     messages
         .into_iter()
-        .map(|message| {
+        .flat_map(|message| {
             let attached_tool_calls = if message.role == "assistant" {
-                collect_attached_tool_calls(message.id.as_str(), message.turn_id.as_str(), &tool_calls)
+                collect_attached_tool_calls(
+                    message.id.as_str(),
+                    message.turn_id.as_str(),
+                    &tool_calls,
+                )
             } else {
                 Vec::new()
             };
             let outbound_tool_calls = attached_tool_calls
                 .iter()
                 .map(tool_call_to_outbound_tool_call)
-                .collect();
+                .collect::<Vec<_>>();
 
-            OutboundMessage {
+            let primary_message = OutboundMessage {
                 role: message.role,
                 item_id: message.id,
                 turn_id: message.turn_id,
-                content: normalize_content_parts(message.content, attached_tool_calls),
+                content: value_to_outbound_content_parts(message.content),
                 tool_calls: outbound_tool_calls,
                 tool_call_id: message.tool_call_id,
-            }
+            };
+
+            let tool_messages = attached_tool_calls
+                .into_iter()
+                .map(|tool_call| OutboundMessage {
+                    role: "tool".into(),
+                    item_id: format!("tool_result_{}", tool_call.id),
+                    turn_id: tool_call.turn_id.clone(),
+                    content: vec![OutboundContentPart::ToolResult(OutboundToolResult {
+                        tool_call_id: tool_call.id.clone(),
+                        tool_name: tool_call.tool_name.clone(),
+                        tool_display_name: tool_call.tool_display_name.clone(),
+                        status: tool_call.status.clone(),
+                        arguments_text: tool_call.arguments_text.clone(),
+                        result: tool_call
+                            .result_json
+                            .as_deref()
+                            .and_then(|raw| serde_json::from_str(raw).ok())
+                            .unwrap_or_else(|| serde_json::json!({})),
+                        media: crate::parse_media_assets_json(tool_call.media_json.as_deref()),
+                    })],
+                    tool_calls: Vec::new(),
+                    tool_call_id: Some(tool_call.id.clone()),
+                })
+                .collect::<Vec<_>>();
+
+            let mut normalized = Vec::with_capacity(1 + tool_messages.len());
+            normalized.push(primary_message);
+            normalized.extend(tool_messages);
+            normalized
         })
         .collect()
-}
-
-fn normalize_content_parts(
-    content: serde_json::Value,
-    attached_tool_calls: Vec<PersistedSessionToolCall>,
-) -> Vec<OutboundContentPart> {
-    let mut parts = value_to_outbound_content_parts(content);
-
-    for tool_call in attached_tool_calls {
-        parts.push(OutboundContentPart::ToolResult(OutboundToolResult {
-            tool_call_id: tool_call.id.clone(),
-            tool_name: tool_call.tool_name.clone(),
-            tool_display_name: tool_call.tool_display_name.clone(),
-            status: tool_call.status.clone(),
-            arguments_text: tool_call.arguments_text.clone(),
-            result: tool_call
-                .result_json
-                .as_deref()
-                .and_then(|raw| serde_json::from_str(raw).ok())
-                .unwrap_or_else(|| serde_json::json!({})),
-            media: crate::parse_media_assets_json(tool_call.media_json.as_deref()),
-        }));
-    }
-
-    parts
 }
 
 pub fn tool_call_to_outbound_tool_call(tool_call: &PersistedSessionToolCall) -> OutboundToolCall {
@@ -105,12 +113,11 @@ mod tests {
 
         let history = normalize_session_history(messages, tool_calls);
 
-        assert_eq!(history.len(), 1);
-        assert_eq!(history[0].content.len(), 2);
-        assert!(matches!(
-            &history[0].content[1],
-            super::OutboundContentPart::ToolResult(_)
-        ));
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].role, "assistant");
+        assert_eq!(history[0].content.len(), 1);
+        assert_eq!(history[1].role, "tool");
+        assert!(matches!(&history[1].content[0], super::OutboundContentPart::ToolResult(_)));
     }
 
     #[test]
@@ -142,7 +149,7 @@ mod tests {
         }];
 
         let history = normalize_session_history(messages, tool_calls);
-        let tool_result = match &history[0].content[1] {
+        let tool_result = match &history[1].content[0] {
             super::OutboundContentPart::ToolResult(tool_result) => tool_result,
             _ => panic!("expected tool result text"),
         };

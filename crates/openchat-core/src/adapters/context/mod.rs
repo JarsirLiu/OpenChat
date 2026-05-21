@@ -1,5 +1,5 @@
-mod history;
 mod content_parts_mapper;
+mod history;
 mod normalize;
 mod tool_call_attachment;
 mod tool_result_formatter;

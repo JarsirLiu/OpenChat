@@ -190,6 +190,7 @@ mod tests {
             source: "openchat".to_string(),
             tool_type: "image".to_string(),
             display_name: "GPT Image".to_string(),
+            image_defaults: None,
         };
 
         let decision = service
@@ -220,6 +221,7 @@ mod tests {
             provider: "openai".to_string(),
             source: "openchat".to_string(),
             tool_type: "image".to_string(),
+            image_defaults: None,
         };
 
         let error = service

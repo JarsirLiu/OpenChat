@@ -7,9 +7,7 @@ pub trait ChatRepository: Send + Sync {
         &'a self,
         user_id: &'a str,
         session_id: &'a str,
-    ) -> core::pin::Pin<
-        Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>,
-    >;
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>;
 
     fn get_session<'a>(
         &'a self,
@@ -32,9 +30,7 @@ pub trait ChatRepository: Send + Sync {
         &'a self,
         user_id: &'a str,
         session_id: &'a str,
-    ) -> core::pin::Pin<
-        Box<dyn core::future::Future<Output = anyhow::Result<bool>> + Send + 'a>,
-    >;
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<bool>> + Send + 'a>>;
 
     fn update_session_title<'a>(
         &'a self,
@@ -52,9 +48,7 @@ pub trait ChatRepository: Send + Sync {
         user_id: &'a str,
         session_id: &'a str,
         turn_id: &'a str,
-    ) -> core::pin::Pin<
-        Box<dyn core::future::Future<Output = anyhow::Result<bool>> + Send + 'a>,
-    >;
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<bool>> + Send + 'a>>;
 
     fn list_session_turns_page<'a>(
         &'a self,
@@ -125,9 +119,7 @@ pub trait ChatRepository: Send + Sync {
         user_id: &'a str,
         session_id: &'a str,
         active_turn_ids: &'a [String],
-    ) -> core::pin::Pin<
-        Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>,
-    >;
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>;
 }
 
 pub trait SessionRuntimeRegistry: Send + Sync {
