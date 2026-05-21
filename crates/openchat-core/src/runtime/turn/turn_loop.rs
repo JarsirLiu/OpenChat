@@ -256,7 +256,10 @@ where
                             })
                             .await;
                     }
-                    Ok(ModelStreamEvent::ToolCallArgumentsDelta { tool_call_id, delta }) => {
+                    Ok(ModelStreamEvent::ToolCallArgumentsDelta {
+                        tool_call_id,
+                        delta,
+                    }) => {
                         let entry = in_progress_tool_calls
                             .entry(tool_call_id.clone())
                             .or_insert_with(InProgressToolCall::default);
@@ -317,7 +320,7 @@ where
                             .execute_and_persist(
                                 &self.chat_store,
                                 session_runtime,
-                                plan,
+                                &pass_plan,
                                 active_turn.turn_id(),
                                 assistant_item_id,
                                 &tool_call_id,
@@ -355,7 +358,9 @@ where
                             .await;
                     }
                     Err(error) => {
-                        return TurnLoopExit::Failed(TurnTerminalReason::from_chat_service_error(&error));
+                        return TurnLoopExit::Failed(TurnTerminalReason::from_chat_service_error(
+                            &error,
+                        ));
                     }
                 }
             }

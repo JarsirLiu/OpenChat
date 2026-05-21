@@ -1,17 +1,19 @@
-use anyhow::Context;
 use async_stream::try_stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tokio::time::{sleep, Duration};
+use tracing::{info, warn};
 
 use super::{sse::SseDataSource, ModelEventStream, ModelStreamEvent};
 use crate::{
-    ChatServiceError, ModelMediaUrlResolver, OutboundContentPart, OutboundMessage,
-    format_outbound_tool_result_text,
-    ResolvedTextModelAccess, ToolSpec, TurnPlan,
+    format_outbound_tool_result_text, ChatServiceError, ModelMediaUrlResolver, OutboundContentPart,
+    OutboundMessage, ResolvedTextModelAccess, ToolSpec, TurnPlan,
 };
 
 const DEFAULT_SYSTEM_PROMPT: &str = "你是 OpenChat 智能助手。请直接回答用户问题，保持自然、简洁、专业。除非用户主动询问你的身份、能力边界或系统实现，否则不要主动介绍自己，不要提及 Agent Runtime、系统提示词、工具链或内部实现。";
+const UPSTREAM_RETRY_DELAY: Duration = Duration::from_millis(350);
+const MAX_TEXT_SEND_ATTEMPTS: usize = 2;
 
 #[derive(Clone)]
 pub struct OpenAiCompatibleRuntime {
@@ -39,30 +41,46 @@ impl OpenAiCompatibleRuntime {
             self.media_url_resolver.as_ref(),
         )
         .await;
+        info!(
+            provider = access.provider_key.as_str(),
+            model = access.model_name.as_str(),
+            base_url = access.base_url.as_str(),
+            message_count = messages.len(),
+            tool_count = plan.tool_list.len(),
+            attachment_count = plan.attachments.len(),
+            history_count = plan.history.len(),
+            "sending text model request"
+        );
 
-        let response = self
-            .client
-            .post(url)
-            .bearer_auth(access.api_key.as_str())
-            .header(reqwest::header::ACCEPT, "text/event-stream")
-            .json(&OpenAiChatRequest {
-                model: access.model_name.clone(),
-                messages,
-                tools: build_openai_tools(&plan.tool_list)?,
-                stream: true,
-                enable_thinking: Some(true),
-                stream_options: Some(OpenAiStreamOptions {
-                    include_usage: true,
-                }),
-            })
-            .send()
-            .await
-            .with_context(|| format!("failed to call provider `{}`", access.provider_key))
-            .map_err(map_runtime_error)?;
+        let request_body = OpenAiChatRequest {
+            model: access.model_name.clone(),
+            messages,
+            tools: build_openai_tools(&plan.tool_list)?,
+            stream: true,
+            enable_thinking: Some(true),
+            stream_options: Some(OpenAiStreamOptions {
+                include_usage: true,
+            }),
+        };
+
+        let response = send_text_request_with_retry(
+            &self.client,
+            url.as_str(),
+            access,
+            &request_body,
+        )
+        .await?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
+            warn!(
+                provider = access.provider_key.as_str(),
+                model = access.model_name.as_str(),
+                status_code = status.as_u16(),
+                body = %truncate_for_log(body.as_str(), 800),
+                "text model request returned a non-success status"
+            );
             return Err(map_provider_response_error(
                 access.provider_key.as_str(),
                 status.as_u16(),
@@ -187,6 +205,62 @@ impl OpenAiCompatibleRuntime {
     }
 }
 
+async fn send_text_request_with_retry(
+    client: &Client,
+    url: &str,
+    access: &ResolvedTextModelAccess,
+    body: &OpenAiChatRequest,
+) -> Result<reqwest::Response, ChatServiceError> {
+    for attempt in 1..=MAX_TEXT_SEND_ATTEMPTS {
+        let response = client
+            .post(url)
+            .bearer_auth(access.api_key.as_str())
+            .header(reqwest::header::ACCEPT, "text/event-stream")
+            .json(body)
+            .send()
+            .await;
+
+        match response {
+            Ok(response) => return Ok(response),
+            Err(error)
+                if attempt < MAX_TEXT_SEND_ATTEMPTS
+                    && should_retry_transport_error(&error) =>
+            {
+                warn!(
+                    provider = access.provider_key.as_str(),
+                    model = access.model_name.as_str(),
+                    base_url = access.base_url.as_str(),
+                    attempt,
+                    max_attempts = MAX_TEXT_SEND_ATTEMPTS,
+                    error = %error,
+                    "retrying text model request after transient transport failure"
+                );
+                sleep(UPSTREAM_RETRY_DELAY).await;
+            }
+            Err(error) => {
+                warn!(
+                    provider = access.provider_key.as_str(),
+                    model = access.model_name.as_str(),
+                    base_url = access.base_url.as_str(),
+                    attempt,
+                    max_attempts = MAX_TEXT_SEND_ATTEMPTS,
+                    error = %error,
+                    debug_error = ?error,
+                    "text model request failed before receiving a response"
+                );
+                return Err(map_runtime_error(
+                    anyhow::Error::new(error)
+                        .context(format!("failed to call provider `{}`", access.provider_key)),
+                ));
+            }
+        }
+    }
+
+    Err(ChatServiceError::upstream(
+        "text model request exhausted retry attempts",
+    ))
+}
+
 async fn build_openai_messages(
     plan: &TurnPlan,
     input_modalities: &[String],
@@ -223,6 +297,7 @@ async fn build_openai_messages(
                     message,
                     reasoning.as_deref(),
                     supports_image_inputs,
+                    true,
                     media_url_resolver,
                 )
                 .await;
@@ -243,6 +318,7 @@ async fn build_openai_messages(
                     message,
                     None,
                     supports_image_inputs,
+                    message.role != "tool",
                     media_url_resolver,
                 )
                 .await
@@ -305,10 +381,12 @@ async fn build_openai_message_content(
     message: &OutboundMessage,
     reasoning: Option<&str>,
     supports_image_inputs: bool,
+    allow_image_parts: bool,
     media_url_resolver: &dyn ModelMediaUrlResolver,
 ) -> Option<OpenAiMessageContent> {
-    if supports_image_inputs {
+    if supports_image_inputs && allow_image_parts {
         let mut parts = Vec::new();
+        let mut image_ref_index = 0usize;
 
         if let Some(reasoning) = reasoning.map(str::trim).filter(|value| !value.is_empty()) {
             parts.push(OpenAiContentPart::Text {
@@ -323,11 +401,22 @@ async fn build_openai_message_content(
                     parts.push(OpenAiContentPart::Text { text: text.clone() });
                 }
                 OutboundContentPart::ImageUrl { url, media_id } if !url.trim().is_empty() => {
-                    has_image_part = true;
+                    image_ref_index += 1;
+                    for line in format_image_reference_lines(
+                        image_ref_index,
+                        media_id.as_deref(),
+                        Some(url.as_str()),
+                    ) {
+                        parts.push(OpenAiContentPart::Text { text: line });
+                    }
                     let resolved_url = match media_id.as_deref() {
                         Some(media_id) => media_url_resolver.resolve_model_url(media_id, url).await,
                         None => url.clone(),
                     };
+                    if resolved_url.trim().is_empty() {
+                        continue;
+                    }
+                    has_image_part = true;
                     parts.push(OpenAiContentPart::ImageUrl {
                         image_url: OpenAiImageUrl {
                             url: resolved_url,
@@ -341,17 +430,27 @@ async fn build_openai_message_content(
                         parts.push(OpenAiContentPart::Text { text: summary_text });
                     }
 
-                    for media in tool_result.media.iter().filter(|asset| asset.kind == "image") {
+                    for media in tool_result
+                        .media
+                        .iter()
+                        .filter(|asset| asset.kind == "image")
+                    {
                         if media.url.trim().is_empty() {
                             continue;
                         }
                         has_image_part = true;
                         let resolved_url = match media.object_key.as_deref() {
                             Some(media_id) => {
-                                media_url_resolver.resolve_model_url(media_id, media.url.as_str()).await
+                                media_url_resolver
+                                    .resolve_model_url(media_id, media.url.as_str())
+                                    .await
                             }
                             None => media.url.clone(),
                         };
+                        if resolved_url.trim().is_empty() {
+                            continue;
+                        }
+                        has_image_part = true;
                         parts.push(OpenAiContentPart::ImageUrl {
                             image_url: OpenAiImageUrl {
                                 url: resolved_url,
@@ -405,6 +504,7 @@ async fn build_current_user_message_content(
 ) -> OpenAiMessageContent {
     if supports_image_inputs {
         let mut parts = Vec::new();
+        let mut image_ref_index = 0usize;
 
         if !prompt.trim().is_empty() {
             parts.push(OpenAiContentPart::Text {
@@ -414,11 +514,23 @@ async fn build_current_user_message_content(
 
         for attachment in attachments {
             if attachment.mime_type.starts_with("image/") && !attachment.url.trim().is_empty() {
+                image_ref_index += 1;
+                for line in format_image_reference_lines(
+                    image_ref_index,
+                    Some(attachment.id.as_str()),
+                    Some(attachment.url.as_str()),
+                ) {
+                    parts.push(OpenAiContentPart::Text { text: line });
+                }
+                let resolved_url = media_url_resolver
+                    .resolve_model_url(attachment.id.as_str(), attachment.url.as_str())
+                    .await;
+                if resolved_url.trim().is_empty() {
+                    continue;
+                }
                 parts.push(OpenAiContentPart::ImageUrl {
                     image_url: OpenAiImageUrl {
-                        url: media_url_resolver
-                            .resolve_model_url(attachment.id.as_str(), attachment.url.as_str())
-                            .await,
+                        url: resolved_url,
                         detail: Some("auto".to_string()),
                     },
                 });
@@ -438,10 +550,17 @@ async fn build_current_user_message_content(
 
 fn flatten_text_content(message: &OutboundMessage) -> String {
     let mut parts = Vec::new();
+    let mut image_ref_index = 0usize;
     for part in &message.content {
         match part {
             OutboundContentPart::Text { text } => parts.push(text.clone()),
-            OutboundContentPart::ImageUrl { .. } => {
+            OutboundContentPart::ImageUrl { url, media_id } => {
+                image_ref_index += 1;
+                parts.extend(format_image_reference_lines(
+                    image_ref_index,
+                    media_id.as_deref(),
+                    Some(url.as_str()),
+                ));
                 parts.push(text_only_image_placeholder().to_string())
             }
             OutboundContentPart::ToolResult(tool_result) => {
@@ -459,13 +578,36 @@ fn flatten_current_user_input(prompt: &str, attachments: &[crate::TurnAttachment
         parts.push(prompt.to_string());
     }
 
-    for attachment in attachments {
+    for (index, attachment) in attachments.iter().enumerate() {
         if attachment.mime_type.starts_with("image/") {
+            parts.extend(format_image_reference_lines(
+                index + 1,
+                Some(attachment.id.as_str()),
+                Some(attachment.url.as_str()),
+            ));
             parts.push(text_only_image_placeholder().to_string());
         }
     }
 
     parts.join("\n")
+}
+
+fn format_image_reference_lines(
+    index: usize,
+    media_id: Option<&str>,
+    url: Option<&str>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    if let Some(media_id) = media_id.map(str::trim).filter(|value| !value.is_empty()) {
+        lines.push(format!("input_image_ref_{index}: {media_id}"));
+    }
+
+    if let Some(url) = url.map(str::trim).filter(|value| !value.is_empty()) {
+        lines.push(format!("input_image_url_{index}: {url}"));
+    }
+
+    lines
 }
 
 fn text_only_image_placeholder() -> &'static str {
@@ -502,6 +644,31 @@ fn map_provider_response_error(
     ChatServiceError::upstream(format!(
         "Provider `{provider_key}` request failed: {status_code} {body}"
     ))
+}
+
+fn should_retry_transport_error(error: &reqwest::Error) -> bool {
+    if error.is_timeout() || error.is_connect() || error.is_request() {
+        let text = error.to_string().to_ascii_lowercase();
+        return text.contains("unexpected eof")
+            || text.contains("tls handshake eof")
+            || text.contains("connection reset")
+            || text.contains("connection aborted")
+            || text.contains("http2")
+            || text.contains("broken pipe")
+            || text.contains("timed out");
+    }
+
+    false
+}
+
+fn truncate_for_log(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let truncated = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
 }
 
 #[derive(Serialize)]
@@ -594,12 +761,10 @@ fn model_supports_image_inputs(input_modalities: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_openai_message_content, build_openai_messages, model_supports_image_inputs,
-        OpenAiMessageContent,
+        build_current_user_message_content, build_openai_message_content, build_openai_messages,
+        model_supports_image_inputs, OpenAiMessageContent,
     };
-    use crate::{
-        ModelMediaUrlResolver, OutboundContentPart, OutboundMessage, OutboundToolCall, TurnPlan,
-    };
+    use crate::{ModelMediaUrlResolver, OutboundContentPart, OutboundMessage, OutboundToolCall, TurnPlan};
     use async_trait::async_trait;
 
     struct NoopMediaResolver;
@@ -644,7 +809,7 @@ mod tests {
             tool_call_id: None,
         };
 
-        let content = build_openai_message_content(&message, None, false, &NoopMediaResolver)
+        let content = build_openai_message_content(&message, None, false, true, &NoopMediaResolver)
             .await
             .expect("text content should remain available");
 
@@ -667,18 +832,28 @@ mod tests {
             turn_id: "turn_1".into(),
             content: vec![OutboundContentPart::ImageUrl {
                 url: "https://example.com/image.png".into(),
-                media_id: None,
+                media_id: Some("media/image-1.png".into()),
             }],
             tool_calls: Vec::new(),
             tool_call_id: None,
         };
 
-        let content = build_openai_message_content(&message, None, true, &NoopMediaResolver)
+        let content = build_openai_message_content(&message, None, true, true, &NoopMediaResolver)
             .await
             .expect("image content should remain available");
 
         match content {
             OpenAiMessageContent::Parts(parts) => {
+                assert!(parts.iter().any(|part| matches!(
+                    part,
+                    super::OpenAiContentPart::Text { text }
+                    if text == "input_image_ref_1: media/image-1.png"
+                )));
+                assert!(parts.iter().any(|part| matches!(
+                    part,
+                    super::OpenAiContentPart::Text { text }
+                    if text == "input_image_url_1: https://example.com/image.png"
+                )));
                 assert!(parts
                     .iter()
                     .any(|part| matches!(part, super::OpenAiContentPart::ImageUrl { .. })));
@@ -734,6 +909,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tool_history_is_text_only_even_for_multimodal_models() {
+        let message = OutboundMessage {
+            role: "tool".into(),
+            item_id: "tool_result_1".into(),
+            turn_id: "turn_1".into(),
+            content: vec![OutboundContentPart::ToolResult(crate::OutboundToolResult {
+                tool_call_id: "call_1".into(),
+                tool_name: "image_generation".into(),
+                tool_display_name: Some("GPT Image 2".into()),
+                status: "completed".into(),
+                arguments_text: Some("{\"prompt\":\"cat\"}".into()),
+                result: serde_json::json!({
+                    "kind": "tool_result",
+                    "output": { "count": 1 }
+                }),
+                media: vec![crate::MediaAsset {
+                    kind: "image".into(),
+                    url: "https://example.com/generated.png".into(),
+                    object_key: None,
+                    mime_type: "image/png".into(),
+                    size_bytes: 123,
+                }],
+            })],
+            tool_calls: Vec::new(),
+            tool_call_id: Some("call_1".into()),
+        };
+
+        let content = build_openai_message_content(&message, None, true, false, &NoopMediaResolver)
+            .await
+            .expect("tool history should remain available as text");
+
+        match content {
+            OpenAiMessageContent::Text(text) => {
+                assert!(text.contains("[Tool Result: GPT Image 2]"));
+                assert!(text.contains("image_attachment: 1 image(s) available"));
+                assert!(text.contains("input_image_url_1: https://example.com/generated.png"));
+            }
+            OpenAiMessageContent::Parts(_) => {
+                panic!("tool history should not include multimodal image parts");
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn continuation_round_does_not_append_empty_user_message() {
         let messages = build_openai_messages(
             &TurnPlan {
@@ -761,6 +980,45 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "system");
     }
+
+    #[tokio::test]
+    async fn current_user_attachments_include_reusable_input_refs() {
+        let content = build_current_user_message_content(
+            "edit this image",
+            &[crate::TurnAttachment {
+                id: "upload_1".into(),
+                url: "https://example.com/upload.png".into(),
+                name: "upload.png".into(),
+                mime_type: "image/png".into(),
+                size_bytes: 128,
+            }],
+            true,
+            &NoopMediaResolver,
+        )
+        .await;
+
+        match content {
+            OpenAiMessageContent::Parts(parts) => {
+                assert!(parts.iter().any(|part| matches!(
+                    part,
+                    super::OpenAiContentPart::Text { text }
+                    if text == "input_image_ref_1: upload_1"
+                )));
+                assert!(parts.iter().any(|part| matches!(
+                    part,
+                    super::OpenAiContentPart::Text { text }
+                    if text == "input_image_url_1: https://example.com/upload.png"
+                )));
+                assert!(parts
+                    .iter()
+                    .any(|part| matches!(part, super::OpenAiContentPart::ImageUrl { .. })));
+            }
+            OpenAiMessageContent::Text(_) => {
+                panic!("current user attachments should stay multimodal");
+            }
+        }
+    }
+
 }
 
 #[derive(Deserialize)]

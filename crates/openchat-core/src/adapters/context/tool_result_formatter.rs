@@ -45,6 +45,7 @@ pub fn format_tool_result_text(
         lines.push(format!(
             "image_attachment: {image_count} image(s) available"
         ));
+        lines.extend(format_image_input_refs(media));
     }
 
     lines.join("\n")
@@ -83,4 +84,57 @@ pub fn sanitize_tool_result_json(result: &Value) -> Value {
 
 pub fn count_image_attachments(media: &[MediaAsset]) -> usize {
     media.iter().filter(|media| media.kind == "image").count()
+}
+
+fn format_image_input_refs(media: &[MediaAsset]) -> Vec<String> {
+    media.iter()
+        .filter(|media| media.kind == "image")
+        .enumerate()
+        .flat_map(|(index, media)| {
+            let mut lines = Vec::new();
+            let item_index = index + 1;
+
+            if let Some(object_key) = media
+                .object_key
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                lines.push(format!("input_image_ref_{item_index}: {object_key}"));
+            }
+
+            if !media.url.trim().is_empty() {
+                lines.push(format!("input_image_url_{item_index}: {}", media.url.trim()));
+            }
+
+            lines
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_tool_result_text;
+    use crate::MediaAsset;
+    use serde_json::json;
+
+    #[test]
+    fn image_tool_results_include_reusable_input_refs() {
+        let text = format_tool_result_text(
+            "GPT Image 2",
+            "completed",
+            Some("{\"prompt\":\"edit this\"}"),
+            Some(&json!({ "kind": "image" })),
+            &[MediaAsset {
+                kind: "image".into(),
+                url: "https://example.com/generated.png".into(),
+                object_key: Some("media/object-1.png".into()),
+                mime_type: "image/png".into(),
+                size_bytes: 128,
+            }],
+        );
+
+        assert!(text.contains("input_image_ref_1: media/object-1.png"));
+        assert!(text.contains("input_image_url_1: https://example.com/generated.png"));
+    }
 }
