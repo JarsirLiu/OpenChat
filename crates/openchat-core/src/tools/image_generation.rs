@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 use crate::{
     normalize_generated_image_bytes, ChatServiceError, ImageModelAccessResolver,
@@ -82,7 +82,7 @@ impl ImageRuntime {
             "{}/images/generations",
             access.base_url.trim_end_matches('/')
         );
-        info!(
+        debug!(
             provider = access.provider_key.as_str(),
             model = access.model_name.as_str(),
             base_url = access.base_url.as_str(),
@@ -145,7 +145,7 @@ impl ImageRuntime {
         access: &ResolvedImageModelAccess,
     ) -> Result<Vec<GeneratedImage>, ChatServiceError> {
         let url = format!("{}/images/edits", access.base_url.trim_end_matches('/'));
-        info!(
+        debug!(
             provider = access.provider_key.as_str(),
             model = access.model_name.as_str(),
             base_url = access.base_url.as_str(),
@@ -600,7 +600,7 @@ async fn decode_openai_image_response(
         .context("failed to read image provider response body")
         .map_err(map_runtime_error)?;
 
-    info!(
+    debug!(
         provider = provider_key,
         model = model_name,
         status_code = status,
@@ -827,7 +827,7 @@ async fn decode_openai_image_payload(
         }
 
         if let Some(url) = url.filter(|value| !value.trim().is_empty()) {
-            info!(image_url = %url, "downloading image output from provider URL");
+            debug!(image_url = %url, "downloading image output from provider URL");
 
             let response = client
                 .get(&url)
@@ -866,7 +866,7 @@ async fn decode_openai_image_payload(
                 .map_err(map_runtime_error)?
                 .to_vec();
 
-            info!(
+            debug!(
                 image_url = %url,
                 status_code = status.as_u16(),
                 content_type = %content_type,

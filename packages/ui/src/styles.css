@@ -980,6 +980,19 @@
   color: #f4f4f5;
 }
 
+.lc-image-gen-loading-text {
+  color: #9ca3af;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+.dark .lc-image-gen-loading-text {
+  color: #6b7280;
+}
+
 /* 微型失败卡 */
 .lc-image-gen-failed-card {
   display: flex;

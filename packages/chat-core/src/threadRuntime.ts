@@ -26,6 +26,8 @@ export const createInitialChatRuntimeV2State = (): ChatRuntimeV2State => ({
   pending: 'idle',
 })
 
+const buildAssistantPlaceholderId = (turnId: string) => `assistant-placeholder:${turnId}`
+
 const buildItemsById = (turns: ThreadTurn[]) =>
   Object.fromEntries(
     turns.flatMap((turn) => turn.items.map((item) => [item.id, item] as const)),
@@ -73,7 +75,18 @@ export const appendOptimisticTurn = (
         status: 'running',
         startedAt: target.startedAt ?? null,
         completedAt: null,
-        items: [],
+        items: [
+          {
+            id: buildAssistantPlaceholderId(target.id),
+            type: 'assistantPlaceholder',
+            sessionId: target.sessionId,
+            turnId: target.id,
+            status: 'in_progress',
+            seq: 0,
+            createdAt: target.startedAt ?? null ?? undefined,
+            updatedAt: target.startedAt ?? null ?? undefined,
+          },
+        ],
         terminalReason: null,
       },
     ]),
@@ -136,6 +149,16 @@ const upsertItem = (
 const getNextSeq = (turn: ThreadTurn) =>
   turn.items.reduce((max, item) => Math.max(max, item.seq), -1) + 1
 
+const clearAssistantPlaceholder = (turns: ThreadTurn[], turnId: string) =>
+  turns.map((turn) =>
+    turn.id === turnId
+      ? {
+          ...turn,
+          items: turn.items.filter((item) => item.type !== 'assistantPlaceholder'),
+        }
+      : turn,
+  )
+
 const resolveTerminalItemStatus = (turnStatus: string): ItemStatus =>
   turnStatus === 'interrupted' ? 'interrupted' : 'completed'
 
@@ -173,8 +196,15 @@ export const applyThreadStreamEvent = (
   }
 
   if (event.type === 'item.started') {
-    const existing = ensuredTurn.items.find((item) => item.id === event.itemId)
-    const seq = existing?.seq ?? getNextSeq(ensuredTurn)
+    const nextTurns = event.item.role === 'assistant'
+      ? clearAssistantPlaceholder(ensuredTurns, event.turnId)
+      : ensuredTurns
+    const nextTurn = nextTurns.find((turn) => turn.id === event.turnId)
+    if (!nextTurn) {
+      return state
+    }
+    const existing = nextTurn.items.find((item) => item.id === event.itemId)
+    const seq = existing?.seq ?? getNextSeq(nextTurn)
     const content = Array.isArray(event.item.content)
       ? event.item.content
       : event.item.text
@@ -210,15 +240,20 @@ export const applyThreadStreamEvent = (
                   : '',
             phase: null,
           }
-    return hydrateChatRuntimeV2State(upsertItem(ensuredTurns, event.turnId, item))
+    return hydrateChatRuntimeV2State(upsertItem(nextTurns, event.turnId, item))
   }
 
   if (event.type === 'item.message.delta') {
-    const targetItem = ensuredTurn.items.find((item) => item.id === event.itemId)
+    const nextTurns = clearAssistantPlaceholder(ensuredTurns, event.turnId)
+    const nextTurn = nextTurns.find((turn) => turn.id === event.turnId)
+    if (!nextTurn) {
+      return state
+    }
+    const targetItem = nextTurn.items.find((item) => item.id === event.itemId)
     if (!targetItem) {
-      const seq = getNextSeq(ensuredTurn)
+      const seq = getNextSeq(nextTurn)
       return hydrateChatRuntimeV2State(
-        upsertItem(ensuredTurns, event.turnId, {
+        upsertItem(nextTurns, event.turnId, {
           id: event.itemId,
           type: 'agentMessage',
           sessionId: event.sessionId,
@@ -233,10 +268,10 @@ export const applyThreadStreamEvent = (
       )
     }
     if (targetItem.type !== 'agentMessage') {
-      return hydrateChatRuntimeV2State(ensuredTurns)
+      return hydrateChatRuntimeV2State(nextTurns)
     }
     return hydrateChatRuntimeV2State(
-      upsertItem(ensuredTurns, event.turnId, {
+      upsertItem(nextTurns, event.turnId, {
         ...targetItem,
         status: 'in_progress',
         text: `${targetItem.text}${event.delta}`,
@@ -246,10 +281,15 @@ export const applyThreadStreamEvent = (
   }
 
   if (event.type === 'reasoning.started' || event.type === 'reasoning.completed') {
-    const existing = ensuredTurn.items.find((item) => item.id === event.itemId)
-    const seq = existing?.seq ?? getNextSeq(ensuredTurn)
+    const nextTurns = clearAssistantPlaceholder(ensuredTurns, event.turnId)
+    const nextTurn = nextTurns.find((turn) => turn.id === event.turnId)
+    if (!nextTurn) {
+      return state
+    }
+    const existing = nextTurn.items.find((item) => item.id === event.itemId)
+    const seq = existing?.seq ?? getNextSeq(nextTurn)
     return hydrateChatRuntimeV2State(
-      upsertItem(ensuredTurns, event.turnId, {
+      upsertItem(nextTurns, event.turnId, {
         id: event.itemId,
         type: 'reasoning',
         sessionId: event.sessionId,
@@ -264,11 +304,16 @@ export const applyThreadStreamEvent = (
   }
 
   if (event.type === 'reasoning.delta') {
-    const existing = ensuredTurn.items.find((item) => item.id === event.itemId)
-    const seq = existing?.seq ?? getNextSeq(ensuredTurn)
+    const nextTurns = clearAssistantPlaceholder(ensuredTurns, event.turnId)
+    const nextTurn = nextTurns.find((turn) => turn.id === event.turnId)
+    if (!nextTurn) {
+      return state
+    }
+    const existing = nextTurn.items.find((item) => item.id === event.itemId)
+    const seq = existing?.seq ?? getNextSeq(nextTurn)
     const previous = existing?.type === 'reasoning' ? existing.content.join('\n\n') : ''
     return hydrateChatRuntimeV2State(
-      upsertItem(ensuredTurns, event.turnId, {
+      upsertItem(nextTurns, event.turnId, {
         id: event.itemId,
         type: 'reasoning',
         sessionId: event.sessionId,
@@ -283,6 +328,11 @@ export const applyThreadStreamEvent = (
   }
 
   if (event.type === 'item.tool_call.started') {
+    const nextTurns = clearAssistantPlaceholder(ensuredTurns, event.turnId)
+    const nextTurn = nextTurns.find((turn) => turn.id === event.turnId)
+    if (!nextTurn) {
+      return state
+    }
     const parsedArguments = (() => {
       if (!event.arguments || typeof event.arguments !== 'object') {
         return null
@@ -290,10 +340,10 @@ export const applyThreadStreamEvent = (
       return event.arguments as Record<string, unknown>
     })()
     const imageItemId = `image:${event.toolCallId}`
-    const existing = ensuredTurn.items.find((item) => item.id === imageItemId)
-    const seq = existing?.seq ?? getNextSeq(ensuredTurn)
+    const existing = nextTurn.items.find((item) => item.id === imageItemId)
+    const seq = existing?.seq ?? getNextSeq(nextTurn)
     return hydrateChatRuntimeV2State(
-      upsertItem(ensuredTurns, event.turnId, {
+      upsertItem(nextTurns, event.turnId, {
         id: imageItemId,
         type: 'imageGeneration',
         sessionId: event.sessionId,
@@ -337,6 +387,11 @@ export const applyThreadStreamEvent = (
   }
 
   if (event.type === 'item.tool_call.completed') {
+    const nextTurns = clearAssistantPlaceholder(ensuredTurns, event.turnId)
+    const nextTurn = nextTurns.find((turn) => turn.id === event.turnId)
+    if (!nextTurn) {
+      return state
+    }
     const parsedArguments = (() => {
       if (!event.item.argumentsText) {
         return null
@@ -351,10 +406,10 @@ export const applyThreadStreamEvent = (
     const mediaImages =
       toolResultPart?.media?.filter((media) => media.kind === 'image' && media.url.trim()) ?? []
     const imageItemId = `image:${event.item.toolCallId}`
-    const existing = ensuredTurn.items.find((item) => item.id === imageItemId)
-    const seq = existing?.seq ?? getNextSeq(ensuredTurn)
+    const existing = nextTurn.items.find((item) => item.id === imageItemId)
+    const seq = existing?.seq ?? getNextSeq(nextTurn)
     return hydrateChatRuntimeV2State(
-      upsertItem(ensuredTurns, event.turnId, {
+      upsertItem(nextTurns, event.turnId, {
         id: imageItemId,
         type: 'imageGeneration',
         sessionId: event.sessionId,

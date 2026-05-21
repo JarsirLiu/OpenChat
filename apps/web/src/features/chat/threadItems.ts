@@ -78,6 +78,20 @@ const normalizeItem = (item: SessionThreadItemPayload): ThreadItem | null => {
     }
   }
 
+  if (item.type === 'assistantPlaceholder') {
+    return {
+      id: item.id,
+      type: 'assistantPlaceholder',
+      sessionId: item.sessionId,
+      turnId: item.turnId,
+      status: item.status,
+      seq: item.seq,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      parentId: item.parentId,
+    }
+  }
+
   if (item.type === 'imageGeneration') {
     return {
       id: item.id,

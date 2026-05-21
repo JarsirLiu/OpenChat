@@ -87,6 +87,8 @@ const parseTimestamp = (value?: string) => {
   return Number.isNaN(parsed) ? null : parsed
 }
 
+const IMAGE_GEN_LOADING_MESSAGES = ['正在构思作图', '正在尝试作图', '图片快做好了'] as const
+
 const sanitizeDownloadName = (value: string) =>
   value
     .trim()
@@ -160,6 +162,14 @@ const ImageGenerationBlock = ({
 
     return null
   }, [completedAtMs, item.status, now, startedAtMs])
+  const loadingStatusText = useMemo(() => {
+    if (item.status !== 'in_progress' || !startedAtMs) {
+      return IMAGE_GEN_LOADING_MESSAGES[0]
+    }
+
+    const step = Math.floor(Math.max(0, now - startedAtMs) / 2400)
+    return IMAGE_GEN_LOADING_MESSAGES[step % IMAGE_GEN_LOADING_MESSAGES.length]
+  }, [item.status, now, startedAtMs])
 
   useEffect(() => {
     if (item.status !== 'in_progress' || !startedAtMs) {
@@ -262,7 +272,7 @@ const ImageGenerationBlock = ({
                       <Loader2 className="lc-image-gen-loading-spinner animate-spin" size={24} />
                     </div>
                     <div className="lc-image-gen-loading-timer">{durationText || '0.0 s'}</div>
-                    <div className="lc-image-gen-loading-text">正在精心绘制奇妙世界...</div>
+                    <div className="lc-image-gen-loading-text">{loadingStatusText}</div>
                   </div>
                 </>
               )}
@@ -295,6 +305,10 @@ const renderAssistantItem = (item: ThreadItem) => {
         />
       </div>
     )
+  }
+
+  if (item.type === 'assistantPlaceholder') {
+    return <ContentLoading key={item.id} label="准备响应中" startedAt={item.createdAt ?? undefined} />
   }
 
   if (item.type === 'imageGeneration') {
@@ -389,7 +403,9 @@ export function ThreadConversation({
                   ) : null
                 }
               >
-                {turn.status === 'running' && !hasStreamingTextOrReasoning ? (
+                {turn.status === 'running' &&
+                assistantItems.length === 0 &&
+                !hasStreamingTextOrReasoning ? (
                   <ContentLoading label="准备响应中" startedAt={turn.startedAt ?? undefined} />
                 ) : null}
                 {assistantItems.map((item) => renderAssistantItem(item))}

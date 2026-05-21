@@ -28,6 +28,10 @@ export interface AgentMessageThreadItem extends ThreadItemBase {
   phase?: 'commentary' | 'final' | null
 }
 
+export interface AssistantPlaceholderThreadItem extends ThreadItemBase {
+  type: 'assistantPlaceholder'
+}
+
 export interface GeneratedImageAsset {
   url: string
   mimeType: string
@@ -51,6 +55,7 @@ export type ThreadItem =
   | UserMessageThreadItem
   | ReasoningThreadItem
   | AgentMessageThreadItem
+  | AssistantPlaceholderThreadItem
   | ImageGenerationThreadItem
 
 export interface ThreadTurn {

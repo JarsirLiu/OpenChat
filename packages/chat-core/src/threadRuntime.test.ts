@@ -30,7 +30,7 @@ describe('threadRuntime', () => {
     expect(state.pending).toBe('thinking')
   })
 
-  it('creates only a running optimistic turn shell', () => {
+  it('creates a running optimistic turn with an assistant placeholder item', () => {
     const state = appendOptimisticTurn(createInitialChatRuntimeV2State(), {
       id: turnId,
       sessionId,
@@ -39,7 +39,8 @@ describe('threadRuntime', () => {
 
     expect(state.turns).toHaveLength(1)
     expect(state.turns[0].status).toBe('running')
-    expect(state.turns[0].items).toEqual([])
+    expect(state.turns[0].items).toHaveLength(1)
+    expect(state.turns[0].items[0].type).toBe('assistantPlaceholder')
     expect(state.isStreaming).toBe(true)
     expect(state.activeTurnId).toBe(turnId)
   })
@@ -67,9 +68,10 @@ describe('threadRuntime', () => {
       },
     } satisfies ChatStreamEvent)
 
-    expect(next.turns[0].items).toHaveLength(1)
-    expect(next.turns[0].items[0].id).toBe('item_user_server')
-    expect(next.turns[0].items[0].type).toBe('userMessage')
+    expect(next.turns[0].items).toHaveLength(2)
+    expect(next.turns[0].items[0].type).toBe('assistantPlaceholder')
+    expect(next.turns[0].items[1].id).toBe('item_user_server')
+    expect(next.turns[0].items[1].type).toBe('userMessage')
   })
 
   it('projects tool calls onto the optimistic turn shell without fake user items', () => {
@@ -97,6 +99,32 @@ describe('threadRuntime', () => {
     expect(next.turns[0].items).toHaveLength(1)
     expect(next.turns[0].items[0].type).toBe('imageGeneration')
     expect(next.turns[0].items[0].id).toBe('image:call_1')
+  })
+
+  it('removes the assistant placeholder when reasoning starts', () => {
+    const optimistic = appendOptimisticTurn(createInitialChatRuntimeV2State(), {
+      id: turnId,
+      sessionId,
+      startedAt: at,
+    })
+
+    const next = applyThreadStreamEvent(optimistic, {
+      type: 'reasoning.started',
+      sessionId,
+      turnId,
+      itemId: 'reasoning_1',
+      at,
+      item: {
+        id: 'reasoning_1',
+        turnId,
+        kind: 'reasoning',
+        status: 'in_progress',
+        text: '让我想一想',
+      },
+    } satisfies ChatStreamEvent)
+
+    expect(next.turns[0].items).toHaveLength(1)
+    expect(next.turns[0].items[0].type).toBe('reasoning')
   })
 
   it('keeps delta text when assistant started arrives after delta', () => {
