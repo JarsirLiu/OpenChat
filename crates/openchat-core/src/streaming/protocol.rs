@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::{MediaAsset, StreamEventPayload};
+use crate::StreamEventPayload;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -63,27 +63,59 @@ pub struct ToolCallItemDto {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ToolCallSummaryDto {
-    pub id: String,
-    pub name: String,
-    pub display_name: Option<String>,
-    pub parent_item_id: Option<String>,
-    pub arguments_text: Option<String>,
-    pub status: Option<String>,
-    pub content: Value,
+pub struct GeneratedImageAssetDto {
+    pub url: String,
+    pub mime_type: String,
+    pub size_bytes: Option<u64>,
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MessageSnapshotDto {
+pub struct ThreadItemSnapshotDto {
     pub id: String,
-    pub role: String,
+    #[serde(rename = "type")]
+    pub item_type: String,
+    pub session_id: String,
     pub turn_id: String,
     pub status: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub content: Value,
-    pub tool_calls: Option<Vec<ToolCallSummaryDto>>,
+    pub seq: i64,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub parent_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revised_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_tool_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<GeneratedImageAssetDto>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnSnapshotDto {
+    pub id: String,
+    pub session_id: String,
+    pub status: String,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub terminal_reason: Option<TerminalReasonDto>,
+    pub items: Vec<ThreadItemSnapshotDto>,
 }
 
 #[derive(Clone, Serialize)]
@@ -228,19 +260,6 @@ pub struct ItemToolCallCompletedEvent {
     pub item_id: String,
     pub at: String,
     pub item: ToolCallItemDto,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImageGeneratedEvent {
-    #[serde(rename = "type")]
-    pub event_type: &'static str,
-    pub session_id: String,
-    pub turn_id: String,
-    pub at: String,
-    pub media: MediaAsset,
-    pub target_item_id: Option<String>,
-    pub canvas_id: Option<String>,
 }
 
 #[derive(Clone, Serialize)]

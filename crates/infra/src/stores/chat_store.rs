@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use crate::db::DatabasePool;
 use anyhow::Context;
-use serde_json::Value;
 use sqlx::QueryBuilder;
 
 fn now_millis_i64() -> i64 {
@@ -12,33 +11,6 @@ fn now_millis_i64() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     elapsed.as_millis().try_into().unwrap_or(i64::MAX)
-}
-
-#[derive(Clone)]
-pub struct PersistedMessage {
-    pub id: String,
-    pub user_id: String,
-    pub session_id: String,
-    pub turn_id: String,
-    pub role: String,
-    pub status: String,
-    pub content_json: String,
-    pub tool_call_id: Option<String>,
-}
-
-#[derive(Clone)]
-pub struct PersistedToolCall {
-    pub id: String,
-    pub user_id: String,
-    pub session_id: String,
-    pub turn_id: String,
-    pub parent_item_id: Option<String>,
-    pub tool_name: String,
-    pub tool_display_name: Option<String>,
-    pub arguments_text: Option<String>,
-    pub result_json: Option<String>,
-    pub status: String,
-    pub media_json: Option<String>,
 }
 
 #[derive(Clone)]
@@ -56,6 +28,9 @@ pub struct ChatStore {
 pub struct PersistedSession {
     pub id: String,
     pub user_id: String,
+    pub transcript_version: String,
+    pub transcript_migration_status: String,
+    pub transcript_migration_error: Option<String>,
     pub title: Option<String>,
     pub status: String,
     pub created_at: String,
@@ -63,29 +38,49 @@ pub struct PersistedSession {
 }
 
 #[derive(Clone)]
-pub struct PersistedSessionToolCall {
+pub struct PersistedThreadItem {
     pub id: String,
-    pub turn_id: String,
-    pub parent_item_id: Option<String>,
-    pub tool_name: String,
-    pub tool_display_name: Option<String>,
-    pub arguments_text: Option<String>,
-    pub result_json: Option<String>,
-    pub status: String,
-    pub media_json: Option<String>,
-}
-
-#[derive(Clone)]
-pub struct PersistedSessionMessage {
-    pub id: String,
+    pub user_id: String,
     pub session_id: String,
     pub turn_id: String,
-    pub role: String,
+    pub item_type: String,
     pub status: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub content: Value,
-    pub tool_call_id: Option<String>,
+    pub seq: Option<i64>,
+    pub parent_id: Option<String>,
+    pub content_json: Option<String>,
+    pub text: Option<String>,
+    pub prompt: Option<String>,
+    pub revised_prompt: Option<String>,
+    pub model: Option<String>,
+    pub size: Option<String>,
+    pub quality: Option<String>,
+    pub count: Option<i64>,
+    pub source_tool_call_id: Option<String>,
+    pub source_tool_name: Option<String>,
+    pub images_json: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct PersistedThreadItemRow {
+    id: String,
+    user_id: String,
+    session_id: String,
+    turn_id: String,
+    item_type: String,
+    status: String,
+    seq: i64,
+    parent_id: Option<String>,
+    content_json: Option<String>,
+    text: Option<String>,
+    prompt: Option<String>,
+    revised_prompt: Option<String>,
+    model: Option<String>,
+    size: Option<String>,
+    quality: Option<String>,
+    count: Option<i64>,
+    source_tool_call_id: Option<String>,
+    source_tool_name: Option<String>,
+    images_json: Option<String>,
 }
 
 pub struct PersistedTurnPage {
@@ -105,8 +100,10 @@ impl ChatStore {
             DatabasePool::Compat(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO sessions (id, user_id, title, status, created_at, updated_at)
-                    VALUES (?1, ?2, NULL, 'idle', ?3, ?3)
+                    INSERT INTO sessions (
+                      id, user_id, transcript_version, transcript_migration_status, transcript_migration_error, title, status, created_at, updated_at
+                    )
+                    VALUES (?1, ?2, 'v2', 'succeeded', NULL, NULL, 'idle', ?3, ?3)
                     ON CONFLICT(id) DO UPDATE SET
                       updated_at = excluded.updated_at
                     WHERE sessions.user_id = excluded.user_id
@@ -121,8 +118,10 @@ impl ChatStore {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO sessions (id, user_id, title, status, created_at, updated_at)
-                    VALUES ($1, $2, NULL, 'idle', $3, $3)
+                    INSERT INTO sessions (
+                      id, user_id, transcript_version, transcript_migration_status, transcript_migration_error, title, status, created_at, updated_at
+                    )
+                    VALUES ($1, $2, 'v2', 'succeeded', NULL, NULL, 'idle', $3, $3)
                     ON CONFLICT(id) DO UPDATE SET
                       updated_at = EXCLUDED.updated_at
                     WHERE sessions.user_id = EXCLUDED.user_id
@@ -135,6 +134,346 @@ impl ChatStore {
                 .await?;
             }
         }
+        Ok(())
+    }
+
+    pub async fn promote_session_transcript_to_v2(
+        &self,
+        user_id: &str,
+        session_id: &str,
+    ) -> anyhow::Result<()> {
+        match self.pool.as_ref() {
+            DatabasePool::Compat(pool) => {
+                sqlx::query(
+                    r#"
+                    WITH message_items AS (
+                      INSERT INTO thread_items (
+                        id, user_id, session_id, turn_id, item_type, status, seq, parent_id,
+                        content_json, text, prompt, revised_prompt, model, size, quality, count,
+                        source_tool_call_id, source_tool_name, images_json, created_at, updated_at
+                      )
+                      SELECT
+                        messages.id,
+                        messages.user_id,
+                        messages.session_id,
+                        messages.turn_id,
+                        CASE
+                          WHEN messages.role = 'user' THEN 'userMessage'
+                          WHEN messages.role = 'reasoning' THEN 'reasoning'
+                          ELSE 'agentMessage'
+                        END,
+                        messages.status,
+                        CASE
+                          WHEN messages.role = 'user' THEN 10
+                          WHEN messages.role = 'reasoning' THEN 20
+                          ELSE 30
+                        END,
+                        NULL,
+                        messages.content_json,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        messages.created_at,
+                        messages.updated_at
+                      FROM messages
+                      WHERE messages.user_id = ?1
+                        AND messages.session_id = ?2
+                      ON CONFLICT(id) DO NOTHING
+                    ),
+                    image_items AS (
+                      INSERT INTO thread_items (
+                        id, user_id, session_id, turn_id, item_type, status, seq, parent_id,
+                        content_json, text, prompt, revised_prompt, model, size, quality, count,
+                        source_tool_call_id, source_tool_name, images_json, created_at, updated_at
+                      )
+                      SELECT
+                        'image:' || tool_calls.id,
+                        tool_calls.user_id,
+                        tool_calls.session_id,
+                        tool_calls.turn_id,
+                        'imageGeneration',
+                        tool_calls.status,
+                        40 + ROW_NUMBER() OVER (PARTITION BY tool_calls.turn_id ORDER BY tool_calls.created_at, tool_calls.id),
+                        tool_calls.parent_item_id,
+                        NULL,
+                        NULL,
+                        CASE
+                          WHEN tool_calls.arguments_text IS NULL OR trim(tool_calls.arguments_text) = '' THEN NULL
+                          ELSE tool_calls.arguments_text::jsonb ->> 'prompt'
+                        END,
+                        NULL,
+                        tool_calls.tool_name,
+                        CASE
+                          WHEN tool_calls.arguments_text IS NULL OR trim(tool_calls.arguments_text) = '' THEN NULL
+                          ELSE tool_calls.arguments_text::jsonb ->> 'size'
+                        END,
+                        CASE
+                          WHEN tool_calls.arguments_text IS NULL OR trim(tool_calls.arguments_text) = '' THEN NULL
+                          ELSE tool_calls.arguments_text::jsonb ->> 'quality'
+                        END,
+                        CASE
+                          WHEN tool_calls.arguments_text IS NULL OR trim(tool_calls.arguments_text) = '' THEN NULL
+                          WHEN jsonb_typeof(tool_calls.arguments_text::jsonb -> 'n') = 'number'
+                            THEN (tool_calls.arguments_text::jsonb ->> 'n')::BIGINT
+                          ELSE NULL
+                        END,
+                        tool_calls.id,
+                        tool_calls.tool_name,
+                        COALESCE(
+                          (
+                            SELECT jsonb_agg(
+                              jsonb_build_object(
+                                'url', media_entry->>'url',
+                                'mimeType', media_entry->>'mimeType',
+                                'sizeBytes',
+                                  CASE
+                                    WHEN jsonb_typeof(media_entry->'sizeBytes') = 'number'
+                                      THEN (media_entry->>'sizeBytes')::BIGINT
+                                    ELSE NULL
+                                  END
+                              )
+                            )
+                            FROM jsonb_array_elements(
+                              CASE
+                                WHEN tool_calls.media_json IS NULL OR trim(tool_calls.media_json) = '' THEN '[]'::jsonb
+                                ELSE tool_calls.media_json::jsonb
+                              END
+                            ) AS media_entry
+                            WHERE media_entry->>'kind' = 'image'
+                              AND COALESCE(media_entry->>'url', '') <> ''
+                          ),
+                          '[]'::jsonb
+                        )::text,
+                        tool_calls.created_at,
+                        tool_calls.updated_at
+                      FROM tool_calls
+                      WHERE tool_calls.user_id = ?1
+                        AND tool_calls.session_id = ?2
+                        AND EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements(
+                            CASE
+                              WHEN tool_calls.media_json IS NULL OR trim(tool_calls.media_json) = '' THEN '[]'::jsonb
+                              ELSE tool_calls.media_json::jsonb
+                            END
+                          ) AS media_entry
+                          WHERE media_entry->>'kind' = 'image'
+                            AND COALESCE(media_entry->>'url', '') <> ''
+                        )
+                      ON CONFLICT(id) DO NOTHING
+                    )
+                    UPDATE sessions
+                    SET transcript_version = 'v2',
+                        transcript_migration_status = 'succeeded',
+                        transcript_migration_error = NULL
+                    WHERE user_id = ?1 AND id = ?2
+                    "#,
+                )
+                .bind(user_id)
+                .bind(session_id)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"
+                    WITH message_items AS (
+                      INSERT INTO thread_items (
+                        id, user_id, session_id, turn_id, item_type, status, seq, parent_id,
+                        content_json, text, prompt, revised_prompt, model, size, quality, count,
+                        source_tool_call_id, source_tool_name, images_json, created_at, updated_at
+                      )
+                      SELECT
+                        messages.id,
+                        messages.user_id,
+                        messages.session_id,
+                        messages.turn_id,
+                        CASE
+                          WHEN messages.role = 'user' THEN 'userMessage'
+                          WHEN messages.role = 'reasoning' THEN 'reasoning'
+                          ELSE 'agentMessage'
+                        END,
+                        messages.status,
+                        CASE
+                          WHEN messages.role = 'user' THEN 10
+                          WHEN messages.role = 'reasoning' THEN 20
+                          ELSE 30
+                        END,
+                        NULL,
+                        messages.content_json,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        messages.created_at,
+                        messages.updated_at
+                      FROM messages
+                      WHERE messages.user_id = $1
+                        AND messages.session_id = $2
+                      ON CONFLICT(id) DO NOTHING
+                    ),
+                    image_items AS (
+                      INSERT INTO thread_items (
+                        id, user_id, session_id, turn_id, item_type, status, seq, parent_id,
+                        content_json, text, prompt, revised_prompt, model, size, quality, count,
+                        source_tool_call_id, source_tool_name, images_json, created_at, updated_at
+                      )
+                      SELECT
+                        'image:' || tool_calls.id,
+                        tool_calls.user_id,
+                        tool_calls.session_id,
+                        tool_calls.turn_id,
+                        'imageGeneration',
+                        tool_calls.status,
+                        40 + ROW_NUMBER() OVER (PARTITION BY tool_calls.turn_id ORDER BY tool_calls.created_at, tool_calls.id),
+                        tool_calls.parent_item_id,
+                        NULL,
+                        NULL,
+                        CASE
+                          WHEN tool_calls.arguments_text IS NULL OR trim(tool_calls.arguments_text) = '' THEN NULL
+                          ELSE tool_calls.arguments_text::jsonb ->> 'prompt'
+                        END,
+                        NULL,
+                        tool_calls.tool_name,
+                        CASE
+                          WHEN tool_calls.arguments_text IS NULL OR trim(tool_calls.arguments_text) = '' THEN NULL
+                          ELSE tool_calls.arguments_text::jsonb ->> 'size'
+                        END,
+                        CASE
+                          WHEN tool_calls.arguments_text IS NULL OR trim(tool_calls.arguments_text) = '' THEN NULL
+                          ELSE tool_calls.arguments_text::jsonb ->> 'quality'
+                        END,
+                        CASE
+                          WHEN tool_calls.arguments_text IS NULL OR trim(tool_calls.arguments_text) = '' THEN NULL
+                          WHEN jsonb_typeof(tool_calls.arguments_text::jsonb -> 'n') = 'number'
+                            THEN (tool_calls.arguments_text::jsonb ->> 'n')::BIGINT
+                          ELSE NULL
+                        END,
+                        tool_calls.id,
+                        tool_calls.tool_name,
+                        COALESCE(
+                          (
+                            SELECT jsonb_agg(
+                              jsonb_build_object(
+                                'url', media_entry->>'url',
+                                'mimeType', media_entry->>'mimeType',
+                                'sizeBytes',
+                                  CASE
+                                    WHEN jsonb_typeof(media_entry->'sizeBytes') = 'number'
+                                      THEN (media_entry->>'sizeBytes')::BIGINT
+                                    ELSE NULL
+                                  END
+                              )
+                            )
+                            FROM jsonb_array_elements(
+                              CASE
+                                WHEN tool_calls.media_json IS NULL OR trim(tool_calls.media_json) = '' THEN '[]'::jsonb
+                                ELSE tool_calls.media_json::jsonb
+                              END
+                            ) AS media_entry
+                            WHERE media_entry->>'kind' = 'image'
+                              AND COALESCE(media_entry->>'url', '') <> ''
+                          ),
+                          '[]'::jsonb
+                        )::text,
+                        tool_calls.created_at,
+                        tool_calls.updated_at
+                      FROM tool_calls
+                      WHERE tool_calls.user_id = $1
+                        AND tool_calls.session_id = $2
+                        AND EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements(
+                            CASE
+                              WHEN tool_calls.media_json IS NULL OR trim(tool_calls.media_json) = '' THEN '[]'::jsonb
+                              ELSE tool_calls.media_json::jsonb
+                            END
+                          ) AS media_entry
+                          WHERE media_entry->>'kind' = 'image'
+                            AND COALESCE(media_entry->>'url', '') <> ''
+                        )
+                      ON CONFLICT(id) DO NOTHING
+                    )
+                    UPDATE sessions
+                    SET transcript_version = 'v2',
+                        transcript_migration_status = 'succeeded',
+                        transcript_migration_error = NULL
+                    WHERE user_id = $1 AND id = $2
+                    "#,
+                )
+                .bind(user_id)
+                .bind(session_id)
+                .execute(pool)
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn mark_session_transcript_migration_failed(
+        &self,
+        user_id: &str,
+        session_id: &str,
+        error: &str,
+    ) -> anyhow::Result<()> {
+        let now = now_millis_i64();
+        let normalized_error = error.trim();
+        let bounded_error = if normalized_error.len() > 2000 {
+            &normalized_error[..2000]
+        } else {
+            normalized_error
+        };
+
+        match self.pool.as_ref() {
+            DatabasePool::Compat(pool) => {
+                sqlx::query(
+                    r#"
+                    UPDATE sessions
+                    SET transcript_migration_status = 'failed',
+                        transcript_migration_error = ?3,
+                        updated_at = ?4
+                    WHERE user_id = ?1 AND id = ?2
+                    "#,
+                )
+                .bind(user_id)
+                .bind(session_id)
+                .bind(bounded_error)
+                .bind(now)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"
+                    UPDATE sessions
+                    SET transcript_migration_status = 'failed',
+                        transcript_migration_error = $3,
+                        updated_at = $4
+                    WHERE user_id = $1 AND id = $2
+                    "#,
+                )
+                .bind(user_id)
+                .bind(session_id)
+                .bind(bounded_error)
+                .bind(now)
+                .execute(pool)
+                .await?;
+            }
+        }
+
         Ok(())
     }
 
@@ -244,30 +583,59 @@ impl ChatStore {
         Ok(())
     }
 
-    pub async fn upsert_message(&self, message: PersistedMessage) -> anyhow::Result<()> {
+    pub async fn upsert_thread_item(&self, item: PersistedThreadItem) -> anyhow::Result<()> {
         let now = now_millis_i64();
         match self.pool.as_ref() {
             DatabasePool::Compat(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO messages (id, user_id, session_id, turn_id, role, status, content_json, tool_call_id, created_at, updated_at)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
+                    INSERT INTO thread_items (
+                      id, user_id, session_id, turn_id, item_type, status, seq, parent_id,
+                      content_json, text, prompt, revised_prompt, model, size, quality, count,
+                      source_tool_call_id, source_tool_name, images_json, created_at, updated_at
+                    )
+                    VALUES (
+                      ?1, ?2, ?3, ?4, ?5, ?6,
+                      COALESCE(?7, (SELECT COALESCE(MAX(seq) + 1, 0) FROM thread_items WHERE turn_id = ?4)),
+                      ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?20
+                    )
                     ON CONFLICT(id) DO UPDATE SET
                       user_id = excluded.user_id,
                       status = excluded.status,
+                      parent_id = excluded.parent_id,
                       content_json = excluded.content_json,
-                      tool_call_id = excluded.tool_call_id,
+                      text = excluded.text,
+                      prompt = excluded.prompt,
+                      revised_prompt = excluded.revised_prompt,
+                      model = excluded.model,
+                      size = excluded.size,
+                      quality = excluded.quality,
+                      count = excluded.count,
+                      source_tool_call_id = excluded.source_tool_call_id,
+                      source_tool_name = excluded.source_tool_name,
+                      images_json = excluded.images_json,
                       updated_at = excluded.updated_at
                     "#,
                 )
-                .bind(message.id)
-                .bind(message.user_id)
-                .bind(message.session_id)
-                .bind(message.turn_id)
-                .bind(message.role)
-                .bind(message.status)
-                .bind(message.content_json)
-                .bind(message.tool_call_id)
+                .bind(item.id)
+                .bind(item.user_id)
+                .bind(item.session_id)
+                .bind(item.turn_id)
+                .bind(item.item_type)
+                .bind(item.status)
+                .bind(item.seq)
+                .bind(item.parent_id)
+                .bind(item.content_json)
+                .bind(item.text)
+                .bind(item.prompt)
+                .bind(item.revised_prompt)
+                .bind(item.model)
+                .bind(item.size)
+                .bind(item.quality)
+                .bind(item.count)
+                .bind(item.source_tool_call_id)
+                .bind(item.source_tool_name)
+                .bind(item.images_json)
                 .bind(now)
                 .execute(pool)
                 .await?;
@@ -275,93 +643,53 @@ impl ChatStore {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
                     r#"
-                    INSERT INTO messages (id, user_id, session_id, turn_id, role, status, content_json, tool_call_id, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+                    INSERT INTO thread_items (
+                      id, user_id, session_id, turn_id, item_type, status, seq, parent_id,
+                      content_json, text, prompt, revised_prompt, model, size, quality, count,
+                      source_tool_call_id, source_tool_name, images_json, created_at, updated_at
+                    )
+                    VALUES (
+                      $1, $2, $3, $4, $5, $6,
+                      COALESCE($7, (SELECT COALESCE(MAX(seq) + 1, 0) FROM thread_items WHERE turn_id = $4)),
+                      $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $20
+                    )
                     ON CONFLICT(id) DO UPDATE SET
                       user_id = EXCLUDED.user_id,
                       status = EXCLUDED.status,
+                      parent_id = EXCLUDED.parent_id,
                       content_json = EXCLUDED.content_json,
-                      tool_call_id = EXCLUDED.tool_call_id,
+                      text = EXCLUDED.text,
+                      prompt = EXCLUDED.prompt,
+                      revised_prompt = EXCLUDED.revised_prompt,
+                      model = EXCLUDED.model,
+                      size = EXCLUDED.size,
+                      quality = EXCLUDED.quality,
+                      count = EXCLUDED.count,
+                      source_tool_call_id = EXCLUDED.source_tool_call_id,
+                      source_tool_name = EXCLUDED.source_tool_name,
+                      images_json = EXCLUDED.images_json,
                       updated_at = EXCLUDED.updated_at
                     "#,
                 )
-                .bind(message.id)
-                .bind(message.user_id)
-                .bind(message.session_id)
-                .bind(message.turn_id)
-                .bind(message.role)
-                .bind(message.status)
-                .bind(message.content_json)
-                .bind(message.tool_call_id)
-                .bind(now)
-                .execute(pool)
-                .await?;
-            }
-        }
-        Ok(())
-    }
-
-    pub async fn upsert_tool_call(&self, tool_call: PersistedToolCall) -> anyhow::Result<()> {
-        let now = now_millis_i64();
-        match self.pool.as_ref() {
-            DatabasePool::Compat(pool) => {
-                sqlx::query(
-                    r#"
-                    INSERT INTO tool_calls (id, user_id, session_id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json, created_at, updated_at)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
-                    ON CONFLICT(id) DO UPDATE SET
-                      user_id = excluded.user_id,
-                      parent_item_id = excluded.parent_item_id,
-                      tool_display_name = excluded.tool_display_name,
-                      arguments_text = excluded.arguments_text,
-                      result_json = excluded.result_json,
-                      status = excluded.status,
-                      media_json = excluded.media_json,
-                      updated_at = excluded.updated_at
-                    "#,
-                )
-                .bind(tool_call.id)
-                .bind(tool_call.user_id)
-                .bind(tool_call.session_id)
-                .bind(tool_call.turn_id)
-                .bind(tool_call.parent_item_id)
-                .bind(tool_call.tool_name)
-                .bind(tool_call.tool_display_name)
-                .bind(tool_call.arguments_text)
-                .bind(tool_call.result_json)
-                .bind(tool_call.status)
-                .bind(tool_call.media_json)
-                .bind(now)
-                .execute(pool)
-                .await?;
-            }
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(
-                    r#"
-                    INSERT INTO tool_calls (id, user_id, session_id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
-                    ON CONFLICT(id) DO UPDATE SET
-                      user_id = EXCLUDED.user_id,
-                      parent_item_id = EXCLUDED.parent_item_id,
-                      tool_display_name = EXCLUDED.tool_display_name,
-                      arguments_text = EXCLUDED.arguments_text,
-                      result_json = EXCLUDED.result_json,
-                      status = EXCLUDED.status,
-                      media_json = EXCLUDED.media_json,
-                      updated_at = EXCLUDED.updated_at
-                    "#,
-                )
-                .bind(tool_call.id)
-                .bind(tool_call.user_id)
-                .bind(tool_call.session_id)
-                .bind(tool_call.turn_id)
-                .bind(tool_call.parent_item_id)
-                .bind(tool_call.tool_name)
-                .bind(tool_call.tool_display_name)
-                .bind(tool_call.arguments_text)
-                .bind(tool_call.result_json)
-                .bind(tool_call.status)
-                .bind(tool_call.media_json)
+                .bind(item.id)
+                .bind(item.user_id)
+                .bind(item.session_id)
+                .bind(item.turn_id)
+                .bind(item.item_type)
+                .bind(item.status)
+                .bind(item.seq)
+                .bind(item.parent_id)
+                .bind(item.content_json)
+                .bind(item.text)
+                .bind(item.prompt)
+                .bind(item.revised_prompt)
+                .bind(item.model)
+                .bind(item.size)
+                .bind(item.quality)
+                .bind(item.count)
+                .bind(item.source_tool_call_id)
+                .bind(item.source_tool_name)
+                .bind(item.images_json)
                 .bind(now)
                 .execute(pool)
                 .await?;
@@ -425,6 +753,15 @@ impl ChatStore {
                 .bind(now)
                 .execute(pool)
                 .await?;
+
+                sqlx::query(
+                    "UPDATE thread_items SET status = ?2, updated_at = ?3 WHERE turn_id = ?1 AND status = 'in_progress'",
+                )
+                .bind(turn_id)
+                .bind(item_status)
+                .bind(now)
+                .execute(pool)
+                .await?;
             }
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
@@ -456,6 +793,15 @@ impl ChatStore {
 
                 sqlx::query(
                     "UPDATE tool_calls SET status = $2, updated_at = $3 WHERE turn_id = $1 AND status = 'in_progress'",
+                )
+                .bind(turn_id)
+                .bind(item_status)
+                .bind(now)
+                .execute(pool)
+                .await?;
+
+                sqlx::query(
+                    "UPDATE thread_items SET status = $2, updated_at = $3 WHERE turn_id = $1 AND status = 'in_progress'",
                 )
                 .bind(turn_id)
                 .bind(item_status)
@@ -539,6 +885,38 @@ impl ChatStore {
                 .bind(now)
                 .execute(pool)
                 .await?;
+
+                sqlx::query(
+                    r#"
+                    UPDATE thread_items
+                    SET status = (
+                        CASE
+                            WHEN (
+                                SELECT status FROM turns
+                                WHERE turns.id = thread_items.turn_id
+                            ) = 'completed' THEN 'completed'
+                            WHEN (
+                                SELECT status FROM turns
+                                WHERE turns.id = thread_items.turn_id
+                            ) = 'interrupted' THEN 'interrupted'
+                            ELSE 'failed'
+                        END
+                    ),
+                    updated_at = ?3
+                    WHERE session_id = ?1
+                      AND user_id = ?2
+                      AND status = 'in_progress'
+                      AND turn_id IN (
+                          SELECT id FROM turns
+                          WHERE session_id = ?1 AND user_id = ?2 AND status != 'running'
+                      )
+                    "#,
+                )
+                .bind(session_id)
+                .bind(user_id)
+                .bind(now)
+                .execute(pool)
+                .await?;
             }
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
@@ -585,6 +963,38 @@ impl ChatStore {
                             WHEN (
                                 SELECT status FROM turns
                                 WHERE turns.id = tool_calls.turn_id
+                            ) = 'interrupted' THEN 'interrupted'
+                            ELSE 'failed'
+                        END
+                    ),
+                    updated_at = $3
+                    WHERE session_id = $1
+                      AND user_id = $2
+                      AND status = 'in_progress'
+                      AND turn_id IN (
+                          SELECT id FROM turns
+                          WHERE session_id = $1 AND user_id = $2 AND status != 'running'
+                      )
+                    "#,
+                )
+                .bind(session_id)
+                .bind(user_id)
+                .bind(now)
+                .execute(pool)
+                .await?;
+
+                sqlx::query(
+                    r#"
+                    UPDATE thread_items
+                    SET status = (
+                        CASE
+                            WHEN (
+                                SELECT status FROM turns
+                                WHERE turns.id = thread_items.turn_id
+                            ) = 'completed' THEN 'completed'
+                            WHEN (
+                                SELECT status FROM turns
+                                WHERE turns.id = thread_items.turn_id
                             ) = 'interrupted' THEN 'interrupted'
                             ELSE 'failed'
                         END
@@ -816,9 +1226,9 @@ impl ChatStore {
     pub async fn list_sessions(&self, user_id: &str) -> anyhow::Result<Vec<PersistedSession>> {
         let rows = match self.pool.as_ref() {
             DatabasePool::Compat(pool) => {
-                sqlx::query_as::<_, (String, String, Option<String>, String, i64, i64)>(
+                sqlx::query_as::<_, (String, String, String, String, Option<String>, Option<String>, String, i64, i64)>(
                     r#"
-                    SELECT id, user_id, title, status, created_at, updated_at
+                    SELECT id, user_id, transcript_version, transcript_migration_status, transcript_migration_error, title, status, created_at, updated_at
                     FROM sessions
                     WHERE user_id = ?1
                     ORDER BY updated_at DESC
@@ -829,9 +1239,9 @@ impl ChatStore {
                 .await
             }
             DatabasePool::Postgres(pool) => {
-                sqlx::query_as::<_, (String, String, Option<String>, String, i64, i64)>(
+                sqlx::query_as::<_, (String, String, String, String, Option<String>, Option<String>, String, i64, i64)>(
                     r#"
-                    SELECT id, user_id, title, status, created_at, updated_at
+                    SELECT id, user_id, transcript_version, transcript_migration_status, transcript_migration_error, title, status, created_at, updated_at
                     FROM sessions
                     WHERE user_id = $1
                     ORDER BY updated_at DESC
@@ -847,9 +1257,22 @@ impl ChatStore {
         Ok(rows
             .into_iter()
             .map(
-                |(id, user_id, title, status, created_at, updated_at)| PersistedSession {
+                |(
                     id,
                     user_id,
+                    transcript_version,
+                    transcript_migration_status,
+                    transcript_migration_error,
+                    title,
+                    status,
+                    created_at,
+                    updated_at,
+                )| PersistedSession {
+                    id,
+                    user_id,
+                    transcript_version,
+                    transcript_migration_status,
+                    transcript_migration_error,
                     title,
                     status,
                     created_at: created_at.to_string(),
@@ -882,9 +1305,9 @@ impl ChatStore {
     ) -> anyhow::Result<Option<PersistedSession>> {
         let row = match self.pool.as_ref() {
             DatabasePool::Compat(pool) => {
-                sqlx::query_as::<_, (String, String, Option<String>, String, i64, i64)>(
+                sqlx::query_as::<_, (String, String, String, String, Option<String>, Option<String>, String, i64, i64)>(
                     r#"
-                    SELECT id, user_id, title, status, created_at, updated_at
+                    SELECT id, user_id, transcript_version, transcript_migration_status, transcript_migration_error, title, status, created_at, updated_at
                     FROM sessions
                     WHERE id = ?1
                       AND (?2 IS NULL OR user_id = ?2)
@@ -896,9 +1319,9 @@ impl ChatStore {
                 .await
             }
             DatabasePool::Postgres(pool) => {
-                sqlx::query_as::<_, (String, String, Option<String>, String, i64, i64)>(
+                sqlx::query_as::<_, (String, String, String, String, Option<String>, Option<String>, String, i64, i64)>(
                     r#"
-                    SELECT id, user_id, title, status, created_at, updated_at
+                    SELECT id, user_id, transcript_version, transcript_migration_status, transcript_migration_error, title, status, created_at, updated_at
                     FROM sessions
                     WHERE id = $1
                       AND ($2::TEXT IS NULL OR user_id = $2)
@@ -913,9 +1336,22 @@ impl ChatStore {
         .context("failed to get session")?;
 
         Ok(row.map(
-            |(id, user_id, title, status, created_at, updated_at)| PersistedSession {
+            |(
                 id,
                 user_id,
+                transcript_version,
+                transcript_migration_status,
+                transcript_migration_error,
+                title,
+                status,
+                created_at,
+                updated_at,
+            )| PersistedSession {
+                id,
+                user_id,
+                transcript_version,
+                transcript_migration_status,
+                transcript_migration_error,
                 title,
                 status,
                 created_at: created_at.to_string(),
@@ -953,89 +1389,6 @@ impl ChatStore {
         };
 
         Ok(rows_affected > 0)
-    }
-
-    pub async fn list_session_messages(
-        &self,
-        user_id: &str,
-        session_id: &str,
-    ) -> anyhow::Result<Vec<PersistedSessionMessage>> {
-        self.reconcile_session_items(user_id, session_id).await?;
-
-        let rows = match self.pool.as_ref() {
-            DatabasePool::Compat(pool) => {
-                sqlx::query_as::<_, (String, String, String, String, String, String, i64, i64, String, Option<String>)>(
-                    r#"
-                    SELECT id, user_id, session_id, turn_id, role, status, created_at, updated_at, content_json, tool_call_id
-                    FROM messages
-                    WHERE user_id = ?1 AND session_id = ?2
-                    ORDER BY created_at ASC, id ASC
-                    "#,
-                )
-                .bind(user_id)
-                .bind(session_id)
-                .fetch_all(pool)
-                .await
-            }
-            DatabasePool::Postgres(pool) => {
-                sqlx::query_as::<_, (String, String, String, String, String, String, i64, i64, String, Option<String>)>(
-                    r#"
-                    SELECT id, user_id, session_id, turn_id, role, status, created_at, updated_at, content_json, tool_call_id
-                    FROM messages
-                    WHERE user_id = $1 AND session_id = $2
-                    ORDER BY created_at ASC, id ASC
-                    "#,
-                )
-                .bind(user_id)
-                .bind(session_id)
-                .fetch_all(pool)
-                .await
-            }
-        }
-        .context("failed to list session messages")?;
-
-        Ok(rows
-            .into_iter()
-            .map(
-                |(
-                    id,
-                    _user_id,
-                    session_id,
-                    turn_id,
-                    role,
-                    status,
-                    created_at,
-                    updated_at,
-                    content_json,
-                    tool_call_id,
-                ): (
-                    String,
-                    String,
-                    String,
-                    String,
-                    String,
-                    String,
-                    i64,
-                    i64,
-                    String,
-                    Option<String>,
-                )| {
-                    let content = serde_json::from_str::<Value>(&content_json)
-                        .unwrap_or_else(|_| Value::Array(Vec::new()));
-                    PersistedSessionMessage {
-                        id,
-                        session_id,
-                        turn_id,
-                        role,
-                        status,
-                        created_at: created_at.to_string(),
-                        updated_at: updated_at.to_string(),
-                        content,
-                        tool_call_id,
-                    }
-                },
-            )
-            .collect())
     }
 
     pub async fn list_session_turns_page(
@@ -1137,14 +1490,12 @@ impl ChatStore {
         })
     }
 
-    pub async fn list_session_messages_for_turns(
+    pub async fn list_session_thread_items_for_turns(
         &self,
         user_id: &str,
         session_id: &str,
         turn_ids: &[String],
-    ) -> anyhow::Result<Vec<PersistedSessionMessage>> {
-        self.reconcile_session_items(user_id, session_id).await?;
-
+    ) -> anyhow::Result<Vec<PersistedThreadItem>> {
         if turn_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -1158,7 +1509,7 @@ impl ChatStore {
         let rows = match self.pool.as_ref() {
             DatabasePool::Compat(pool) => {
                 let mut query = QueryBuilder::<sqlx::Postgres>::new(
-                    "SELECT id, user_id, session_id, turn_id, role, status, created_at, updated_at, content_json, tool_call_id FROM messages WHERE user_id = ",
+                    "SELECT id, user_id, session_id, turn_id, item_type, status, seq, parent_id, content_json, text, prompt, revised_prompt, model, size, quality, count, source_tool_call_id, source_tool_name, images_json FROM thread_items WHERE user_id = ",
                 );
                 query.push_bind(user_id);
                 query.push(" AND session_id = ");
@@ -1172,24 +1523,13 @@ impl ChatStore {
                 }
                 query.push(")");
                 query
-                    .build_query_as::<(
-                        String,
-                        String,
-                        String,
-                        String,
-                        String,
-                        String,
-                        i64,
-                        i64,
-                        String,
-                        Option<String>,
-                    )>()
+                    .build_query_as::<PersistedThreadItemRow>()
                     .fetch_all(pool)
                     .await
             }
             DatabasePool::Postgres(pool) => {
                 let mut query = QueryBuilder::<sqlx::Postgres>::new(
-                    "SELECT id, user_id, session_id, turn_id, role, status, created_at, updated_at, content_json, tool_call_id FROM messages WHERE user_id = ",
+                    "SELECT id, user_id, session_id, turn_id, item_type, status, seq, parent_id, content_json, text, prompt, revised_prompt, model, size, quality, count, source_tool_call_id, source_tool_name, images_json FROM thread_items WHERE user_id = ",
                 );
                 query.push_bind(user_id);
                 query.push(" AND session_id = ");
@@ -1203,57 +1543,39 @@ impl ChatStore {
                 }
                 query.push(")");
                 query
-                    .build_query_as::<(
-                        String,
-                        String,
-                        String,
-                        String,
-                        String,
-                        String,
-                        i64,
-                        i64,
-                        String,
-                        Option<String>,
-                    )>()
+                    .build_query_as::<PersistedThreadItemRow>()
                     .fetch_all(pool)
                     .await
             }
         }
-        .context("failed to list session messages for turns")?;
+        .context("failed to list session thread items for turns")?;
 
-        let mut messages = rows
+        let mut items = rows
             .into_iter()
-            .map(
-                |(
-                    id,
-                    _user_id,
-                    session_id,
-                    turn_id,
-                    role,
-                    status,
-                    created_at,
-                    updated_at,
-                    content_json,
-                    tool_call_id,
-                )| {
-                    let content = serde_json::from_str::<Value>(&content_json)
-                        .unwrap_or_else(|_| Value::Array(Vec::new()));
-                    PersistedSessionMessage {
-                        id,
-                        session_id,
-                        turn_id,
-                        role,
-                        status,
-                        created_at: created_at.to_string(),
-                        updated_at: updated_at.to_string(),
-                        content,
-                        tool_call_id,
-                    }
-                },
-            )
+            .map(|row| PersistedThreadItem {
+                id: row.id,
+                user_id: row.user_id,
+                session_id: row.session_id,
+                turn_id: row.turn_id,
+                item_type: row.item_type,
+                status: row.status,
+                seq: Some(row.seq),
+                parent_id: row.parent_id,
+                content_json: row.content_json,
+                text: row.text,
+                prompt: row.prompt,
+                revised_prompt: row.revised_prompt,
+                model: row.model,
+                size: row.size,
+                quality: row.quality,
+                count: row.count,
+                source_tool_call_id: row.source_tool_call_id,
+                source_tool_name: row.source_tool_name,
+                images_json: row.images_json,
+            })
             .collect::<Vec<_>>();
 
-        messages.sort_by(|left, right| {
+        items.sort_by(|left, right| {
             let left_order = turn_order.get(&left.turn_id).copied().unwrap_or(usize::MAX);
             let right_order = turn_order
                 .get(&right.turn_id)
@@ -1261,197 +1583,11 @@ impl ChatStore {
                 .unwrap_or(usize::MAX);
             left_order
                 .cmp(&right_order)
-                .then_with(|| left.created_at.cmp(&right.created_at))
+                .then_with(|| left.seq.cmp(&right.seq))
                 .then_with(|| left.id.cmp(&right.id))
         });
 
-        Ok(messages)
-    }
-
-    pub async fn list_session_tool_calls(
-        &self,
-        user_id: &str,
-        session_id: &str,
-    ) -> anyhow::Result<Vec<PersistedSessionToolCall>> {
-        let rows = match self.pool.as_ref() {
-            DatabasePool::Compat(pool) => {
-                sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, Option<String>, Option<String>, String, Option<String>)>(
-                    r#"
-                    SELECT id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json
-                    FROM tool_calls
-                    WHERE user_id = ?1 AND session_id = ?2
-                    ORDER BY created_at ASC, id ASC
-                    "#,
-                )
-                .bind(user_id)
-                .bind(session_id)
-                .fetch_all(pool)
-                .await
-            }
-            DatabasePool::Postgres(pool) => {
-                sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, Option<String>, Option<String>, String, Option<String>)>(
-                    r#"
-                    SELECT id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json
-                    FROM tool_calls
-                    WHERE user_id = $1 AND session_id = $2
-                    ORDER BY created_at ASC, id ASC
-                    "#,
-                )
-                .bind(user_id)
-                .bind(session_id)
-                .fetch_all(pool)
-                .await
-            }
-        }
-        .context("failed to list session tool calls")?;
-
-        Ok(rows
-            .into_iter()
-            .map(
-                |(
-                    id,
-                    turn_id,
-                    parent_item_id,
-                    tool_name,
-                    tool_display_name,
-                    arguments_text,
-                    result_json,
-                    status,
-                    media_json,
-                )| PersistedSessionToolCall {
-                    id,
-                    turn_id,
-                    parent_item_id,
-                    tool_name,
-                    tool_display_name,
-                    arguments_text,
-                    result_json,
-                    status,
-                    media_json,
-                },
-            )
-            .collect())
-    }
-
-    pub async fn list_session_tool_calls_for_turns(
-        &self,
-        user_id: &str,
-        session_id: &str,
-        turn_ids: &[String],
-    ) -> anyhow::Result<Vec<PersistedSessionToolCall>> {
-        if turn_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let turn_order = turn_ids
-            .iter()
-            .enumerate()
-            .map(|(index, turn_id)| (turn_id.clone(), index))
-            .collect::<std::collections::HashMap<_, _>>();
-
-        let rows = match self.pool.as_ref() {
-            DatabasePool::Compat(pool) => {
-                let mut query = QueryBuilder::<sqlx::Postgres>::new(
-                    "SELECT id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json FROM tool_calls WHERE user_id = ",
-                );
-                query.push_bind(user_id);
-                query.push(" AND session_id = ");
-                query.push_bind(session_id);
-                query.push(" AND turn_id IN (");
-                {
-                    let mut separated = query.separated(", ");
-                    for turn_id in turn_ids {
-                        separated.push_bind(turn_id);
-                    }
-                }
-                query.push(")");
-                query
-                    .build_query_as::<(
-                        String,
-                        String,
-                        Option<String>,
-                        String,
-                        Option<String>,
-                        Option<String>,
-                        Option<String>,
-                        String,
-                        Option<String>,
-                    )>()
-                    .fetch_all(pool)
-                    .await
-            }
-            DatabasePool::Postgres(pool) => {
-                let mut query = QueryBuilder::<sqlx::Postgres>::new(
-                    "SELECT id, turn_id, parent_item_id, tool_name, tool_display_name, arguments_text, result_json, status, media_json FROM tool_calls WHERE user_id = ",
-                );
-                query.push_bind(user_id);
-                query.push(" AND session_id = ");
-                query.push_bind(session_id);
-                query.push(" AND turn_id IN (");
-                {
-                    let mut separated = query.separated(", ");
-                    for turn_id in turn_ids {
-                        separated.push_bind(turn_id);
-                    }
-                }
-                query.push(")");
-                query
-                    .build_query_as::<(
-                        String,
-                        String,
-                        Option<String>,
-                        String,
-                        Option<String>,
-                        Option<String>,
-                        Option<String>,
-                        String,
-                        Option<String>,
-                    )>()
-                    .fetch_all(pool)
-                    .await
-            }
-        }
-        .context("failed to list session tool calls for turns")?;
-
-        let mut tool_calls = rows
-            .into_iter()
-            .map(
-                |(
-                    id,
-                    turn_id,
-                    parent_item_id,
-                    tool_name,
-                    tool_display_name,
-                    arguments_text,
-                    result_json,
-                    status,
-                    media_json,
-                )| PersistedSessionToolCall {
-                    id,
-                    turn_id,
-                    parent_item_id,
-                    tool_name,
-                    tool_display_name,
-                    arguments_text,
-                    result_json,
-                    status,
-                    media_json,
-                },
-            )
-            .collect::<Vec<_>>();
-
-        tool_calls.sort_by(|left, right| {
-            let left_order = turn_order.get(&left.turn_id).copied().unwrap_or(usize::MAX);
-            let right_order = turn_order
-                .get(&right.turn_id)
-                .copied()
-                .unwrap_or(usize::MAX);
-            left_order
-                .cmp(&right_order)
-                .then_with(|| left.id.cmp(&right.id))
-        });
-
-        Ok(tool_calls)
+        Ok(items)
     }
 }
 

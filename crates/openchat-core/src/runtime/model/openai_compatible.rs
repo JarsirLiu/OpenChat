@@ -52,13 +52,8 @@ impl OpenAiCompatibleRuntime {
             }),
         };
 
-        let response = send_text_request_with_retry(
-            &self.client,
-            url.as_str(),
-            access,
-            &request_body,
-        )
-        .await?;
+        let response =
+            send_text_request_with_retry(&self.client, url.as_str(), access, &request_body).await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -205,16 +200,14 @@ async fn send_text_request_with_retry(
         match response {
             Ok(response) => return Ok(response),
             Err(error)
-                if attempt < MAX_TEXT_SEND_ATTEMPTS
-                    && should_retry_transport_error(&error) =>
+                if attempt < MAX_TEXT_SEND_ATTEMPTS && should_retry_transport_error(&error) =>
             {
                 sleep(UPSTREAM_RETRY_DELAY).await;
             }
             Err(error) => {
-                return Err(map_runtime_error(
-                    anyhow::Error::new(error)
-                        .context(format!("failed to call provider `{}`", access.provider_key)),
-                ));
+                return Err(map_runtime_error(anyhow::Error::new(error).context(
+                    format!("failed to call provider `{}`", access.provider_key),
+                )));
             }
         }
     }
@@ -717,7 +710,9 @@ mod tests {
         build_current_user_message_content, build_openai_message_content, build_openai_messages,
         model_supports_image_inputs, OpenAiMessageContent,
     };
-    use crate::{ModelMediaUrlResolver, OutboundContentPart, OutboundMessage, OutboundToolCall, TurnPlan};
+    use crate::{
+        ModelMediaUrlResolver, OutboundContentPart, OutboundMessage, OutboundToolCall, TurnPlan,
+    };
     use async_trait::async_trait;
 
     struct NoopMediaResolver;
@@ -971,7 +966,6 @@ mod tests {
             }
         }
     }
-
 }
 
 #[derive(Deserialize)]

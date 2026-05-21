@@ -14,6 +14,30 @@ impl ChatRepository for ChatStore {
         Box::pin(async move { ChatStore::ensure_session(self, user_id, session_id).await })
     }
 
+    fn promote_session_transcript_to_v2<'a>(
+        &'a self,
+        user_id: &'a str,
+        session_id: &'a str,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            ChatStore::promote_session_transcript_to_v2(self, user_id, session_id).await
+        })
+    }
+
+    fn mark_session_transcript_migration_failed<'a>(
+        &'a self,
+        user_id: &'a str,
+        session_id: &'a str,
+        error: &'a str,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            ChatStore::mark_session_transcript_migration_failed(self, user_id, session_id, error)
+                .await
+        })
+    }
+
     fn get_session<'a>(
         &'a self,
         user_id: &'a str,
@@ -86,37 +110,7 @@ impl ChatRepository for ChatStore {
         })
     }
 
-    fn list_session_messages<'a>(
-        &'a self,
-        user_id: &'a str,
-        session_id: &'a str,
-    ) -> core::pin::Pin<
-        Box<
-            dyn core::future::Future<
-                    Output = anyhow::Result<Vec<openchat_infra::stores::PersistedSessionMessage>>,
-                > + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async move { ChatStore::list_session_messages(self, user_id, session_id).await })
-    }
-
-    fn list_session_tool_calls<'a>(
-        &'a self,
-        user_id: &'a str,
-        session_id: &'a str,
-    ) -> core::pin::Pin<
-        Box<
-            dyn core::future::Future<
-                    Output = anyhow::Result<Vec<openchat_infra::stores::PersistedSessionToolCall>>,
-                > + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async move { ChatStore::list_session_tool_calls(self, user_id, session_id).await })
-    }
-
-    fn list_session_messages_for_turns<'a>(
+    fn list_session_thread_items_for_turns<'a>(
         &'a self,
         user_id: &'a str,
         session_id: &'a str,
@@ -124,31 +118,14 @@ impl ChatRepository for ChatStore {
     ) -> core::pin::Pin<
         Box<
             dyn core::future::Future<
-                    Output = anyhow::Result<Vec<openchat_infra::stores::PersistedSessionMessage>>,
+                    Output = anyhow::Result<Vec<openchat_infra::stores::PersistedThreadItem>>,
                 > + Send
                 + 'a,
         >,
     > {
         Box::pin(async move {
-            ChatStore::list_session_messages_for_turns(self, user_id, session_id, turn_ids).await
-        })
-    }
-
-    fn list_session_tool_calls_for_turns<'a>(
-        &'a self,
-        user_id: &'a str,
-        session_id: &'a str,
-        turn_ids: &'a [String],
-    ) -> core::pin::Pin<
-        Box<
-            dyn core::future::Future<
-                    Output = anyhow::Result<Vec<openchat_infra::stores::PersistedSessionToolCall>>,
-                > + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async move {
-            ChatStore::list_session_tool_calls_for_turns(self, user_id, session_id, turn_ids).await
+            ChatStore::list_session_thread_items_for_turns(self, user_id, session_id, turn_ids)
+                .await
         })
     }
 

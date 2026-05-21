@@ -1,6 +1,7 @@
 export const PROTOCOL_VERSION = 'openchat-stream-v1' as const
 export const RESOURCE_MODEL = 'session' as const
 export * from './errorCodes'
+export * from './threadItems'
 
 export type SessionStatus = 'idle' | 'running' | 'completed' | 'interrupted' | 'failed' | 'archived'
 export type TurnStatus = 'running' | 'completed' | 'interrupted' | 'failed'
@@ -10,6 +11,7 @@ export type TurnTerminalReasonCode =
   | 'session_recovered'
   | 'model_connect_timeout'
   | 'model_stream_idle_timeout'
+  | 'transcript_projection_failed'
   | 'provider_authentication_failed'
   | 'upstream_error'
   | 'runtime_error'
@@ -204,13 +206,6 @@ export interface ItemToolCallCompletedEvent extends BaseEvent {
   item: ToolCallItem
 }
 
-export interface ImageGeneratedEvent extends BaseEvent {
-  type: 'image_generated'
-  media: ToolMedia
-  targetItemId?: string | null
-  canvasId?: string | null
-}
-
 export interface TurnCompletedEvent extends BaseEvent {
   type: 'turn.completed'
   turnId: string
@@ -238,12 +233,14 @@ export type ChatStreamEvent =
   | ItemToolCallStartedEvent
   | ItemToolCallArgumentsDeltaEvent
   | ItemToolCallCompletedEvent
-  | ImageGeneratedEvent
   | TurnCompletedEvent
   | TurnFailedEvent
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === 'object')
+
+const hasString = (value: Record<string, unknown>, key: string) =>
+  typeof value[key] === 'string'
 
 export const normalizeStreamEvent = (value: unknown): ChatStreamEvent | null => {
   if (
@@ -253,6 +250,74 @@ export const normalizeStreamEvent = (value: unknown): ChatStreamEvent | null => 
     typeof value.at !== 'string'
   ) {
     return null
+  }
+
+  switch (value.type) {
+    case 'turn.started':
+      if (!hasString(value, 'turnId') || !isRecord(value.turn)) {
+        return null
+      }
+      break
+    case 'item.started':
+      if (!hasString(value, 'turnId') || !hasString(value, 'itemId') || !isRecord(value.item)) {
+        return null
+      }
+      break
+    case 'item.message.delta':
+      if (!hasString(value, 'turnId') || !hasString(value, 'itemId') || !hasString(value, 'delta')) {
+        return null
+      }
+      break
+    case 'reasoning.started':
+    case 'reasoning.delta':
+    case 'reasoning.completed':
+      if (!hasString(value, 'turnId') || !hasString(value, 'itemId')) {
+        return null
+      }
+      break
+    case 'item.tool_call.started':
+      if (
+        !hasString(value, 'turnId') ||
+        !hasString(value, 'itemId') ||
+        !hasString(value, 'toolCallId') ||
+        !hasString(value, 'toolName')
+      ) {
+        return null
+      }
+      break
+    case 'item.tool_call.arguments.delta':
+      if (
+        !hasString(value, 'turnId') ||
+        !hasString(value, 'itemId') ||
+        !hasString(value, 'toolCallId') ||
+        !hasString(value, 'delta')
+      ) {
+        return null
+      }
+      break
+    case 'item.tool_call.completed':
+      if (!hasString(value, 'turnId') || !hasString(value, 'itemId') || !isRecord(value.item)) {
+        return null
+      }
+      break
+    case 'turn.completed':
+      if (!hasString(value, 'turnId') || !isRecord(value.turn)) {
+        return null
+      }
+      break
+    case 'turn.failed':
+      if (!hasString(value, 'turnId') || !isRecord(value.error)) {
+        return null
+      }
+      break
+    case 'session.created':
+    case 'session.updated':
+      if (!isRecord(value.session)) {
+        return null
+      }
+      break
+    default:
+      return null
   }
 
   return value as unknown as ChatStreamEvent

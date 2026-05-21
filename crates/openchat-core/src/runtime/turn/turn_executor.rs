@@ -4,30 +4,18 @@ use openchat_infra::stores::ChatStore;
 
 use crate::{
     runtime::turn::{
-        event_builder::{
-            build_message_item, build_message_started_event, build_reasoning_completed_event,
-            build_reasoning_item, build_turn, build_turn_started_event, send_event,
-        },
-        helpers::now_string,
+        event_builder::{build_turn, build_turn_started_event, send_event},
+        helpers::{now_millis, now_string},
         lifecycle::{emit_session_updated, finalize_turn, TurnTerminalState},
-        message_writer::MessageWriter,
         session_title::SessionTitleGenerator,
         tool_call_coordinator::ToolCallCoordinator,
+        transcript_projector::{ProjectionContext, TranscriptProjector},
         turn_loop::{TurnLoop, TurnLoopExit},
     },
     user_content_to_json, ActiveTurnHandle, ImageModelAccessResolver, ModelProviderRuntime,
     SessionRuntime, TextModelAccessResolver, ToolAccessResolver, ToolExecutor, TurnPlan,
     TurnRunner, TurnTerminalReason,
 };
-
-fn now_millis() -> u128 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time went backwards")
-        .as_millis()
-}
 
 #[derive(Clone)]
 pub struct OpenChatTurnExecutor<R> {
@@ -76,7 +64,6 @@ where
         );
 
         let user_item_id = format!("item_user_{}", now_millis());
-        let assistant_item_id = format!("item_assistant_{}", now_millis());
         let reasoning_item_id = format!("item_reasoning_{}", now_millis());
         let selected_tool_id = plan.tool_list.first().map(|tool| tool.id.as_str());
 
@@ -103,69 +90,32 @@ where
             ),
         );
 
-        let message_writer = MessageWriter::new(chat_store.clone());
+        let transcript_projector = TranscriptProjector::new(chat_store.clone());
         let user_content = user_content_to_json(plan.prompt.as_str(), plan.attachments.as_slice());
 
-        let _ = send_event(
-            &session_runtime,
-            &build_message_started_event(
-                plan.session_id.clone(),
-                active_turn.turn_id().to_string(),
-                user_item_id.clone(),
-                now_string(),
-                build_message_item(
-                    user_item_id.clone(),
-                    active_turn.turn_id().to_string(),
-                    "completed",
-                    "user",
-                    Some(plan.prompt.clone()),
-                    Some(user_content.clone()),
-                ),
-            ),
-        );
-
-        message_writer
-            .write_user_completed(
+        if let Err(reason) = transcript_projector
+            .project_user_message(
+                &session_runtime,
+                ProjectionContext {
+                    user_id: plan.user_id.as_str(),
+                    session_id: plan.session_id.as_str(),
+                    turn_id: active_turn.turn_id(),
+                },
                 user_item_id.as_str(),
-                plan.user_id.as_str(),
-                plan.session_id.as_str(),
-                active_turn.turn_id(),
+                plan.prompt.as_str(),
                 &user_content,
             )
-            .await;
-
-        let _ = send_event(
-            &session_runtime,
-            &build_message_started_event(
-                plan.session_id.clone(),
-                active_turn.turn_id().to_string(),
-                assistant_item_id.clone(),
-                now_string(),
-                build_message_item(
-                    assistant_item_id.clone(),
-                    active_turn.turn_id().to_string(),
-                    "in_progress",
-                    "assistant",
-                    Some(String::new()),
-                    None,
-                ),
-            ),
-        );
-
-        message_writer
-            .write_assistant_started(
-                assistant_item_id.as_str(),
-                plan.user_id.as_str(),
-                plan.session_id.as_str(),
-                active_turn.turn_id(),
-            )
-            .await;
+            .await
+            .map_err(|error| TurnTerminalReason::transcript_projection_failed(error.to_string()))
+        {
+            fail_turn(&chat_store, &session_runtime, &active_turn, reason).await;
+            return;
+        }
 
         let turn_loop = TurnLoop::new(
-            chat_store.clone(),
             model_provider_runtime,
             tool_call_coordinator,
-            message_writer.clone(),
+            transcript_projector.clone(),
         );
 
         let loop_result = turn_loop
@@ -174,7 +124,6 @@ where
                 &session_runtime,
                 &active_turn,
                 user_item_id.as_str(),
-                assistant_item_id.as_str(),
                 reasoning_item_id.as_str(),
             )
             .await;
@@ -198,42 +147,27 @@ where
         };
 
         if loop_result.reasoning_started_once {
-            let _ = send_event(
-                &session_runtime,
-                &build_reasoning_completed_event(
-                    plan.session_id.clone(),
-                    active_turn.turn_id().to_string(),
-                    reasoning_item_id.clone(),
-                    now_string(),
-                    build_reasoning_item(
-                        reasoning_item_id.clone(),
-                        active_turn.turn_id().to_string(),
-                        "completed",
-                        Some(loop_result.reasoning_text.clone()),
-                    ),
-                ),
-            );
-
-            message_writer
-                .write_reasoning_completed(
+            if let Err(reason) = transcript_projector
+                .project_reasoning_completed(
+                    &session_runtime,
+                    ProjectionContext {
+                        user_id: plan.user_id.as_str(),
+                        session_id: plan.session_id.as_str(),
+                        turn_id: active_turn.turn_id(),
+                    },
                     reasoning_item_id.as_str(),
-                    plan.user_id.as_str(),
-                    plan.session_id.as_str(),
-                    active_turn.turn_id(),
                     loop_result.reasoning_text.as_str(),
                 )
-                .await;
+                .await
+                .map_err(|error| {
+                    TurnTerminalReason::transcript_projection_failed(error.to_string())
+                })
+            {
+                fail_turn(&chat_store, &session_runtime, &active_turn, reason).await;
+                return;
+            }
         }
 
-        message_writer
-            .write_assistant_completed(
-                assistant_item_id.as_str(),
-                plan.user_id.as_str(),
-                plan.session_id.as_str(),
-                active_turn.turn_id(),
-                loop_result.assistant_text.as_str(),
-            )
-            .await;
         finalize_turn(
             &chat_store,
             &session_runtime,

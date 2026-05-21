@@ -12,7 +12,7 @@ use crate::{
     },
     http::sessions::{
         RenameSessionDto, SessionDetailDto, SessionHistoryPageDto, SessionHistoryQueryDto,
-        SessionListItemDto, SessionMessageDto, SessionToolCallSummaryDto,
+        SessionListItemDto, SessionThreadItemDto, SessionThreadItemImageDto, SessionTurnDto,
     },
     security::extractors::CurrentUser,
     state::AppState,
@@ -41,6 +41,9 @@ pub async fn list_sessions(
                     id: session.id,
                     title: session.title,
                     status: session.status,
+                    transcript_version: Some(session.transcript_version),
+                    transcript_migration_status: Some(session.transcript_migration_status),
+                    transcript_migration_error: session.transcript_migration_error,
                     created_at: format_millis_timestamp(session.created_at.as_str()),
                     updated_at: format_millis_timestamp(session.updated_at.as_str()),
                 })
@@ -102,32 +105,61 @@ pub async fn get_session(
                     id: session.id,
                     title: session.title,
                     status: session.status,
+                    transcript_version: Some(session.transcript_version),
+                    transcript_migration_status: Some(session.transcript_migration_status),
+                    transcript_migration_error: session.transcript_migration_error,
                     created_at: format_millis_timestamp(session.created_at.as_str()),
                     updated_at: format_millis_timestamp(session.updated_at.as_str()),
                 },
-                messages: snapshot
-                    .messages
+                turns: snapshot
+                    .turns
                     .into_iter()
-                    .map(|message| SessionMessageDto {
-                        id: message.id,
-                        role: message.role,
-                        turn_id: message.turn_id,
-                        status: message.status,
-                        created_at: format_millis_timestamp(message.created_at.as_str()),
-                        updated_at: format_millis_timestamp(message.updated_at.as_str()),
-                        content: message.content,
-                        tool_calls: message
-                            .tool_calls
-                            .unwrap_or_default()
+                    .map(|turn| SessionTurnDto {
+                        id: turn.id,
+                        session_id: turn.session_id,
+                        status: turn.status,
+                        started_at: turn
+                            .started_at
+                            .map(|value| format_millis_timestamp(value.as_str())),
+                        completed_at: turn
+                            .completed_at
+                            .map(|value| format_millis_timestamp(value.as_str())),
+                        items: turn
+                            .items
                             .into_iter()
-                            .map(|tool_call| SessionToolCallSummaryDto {
-                                id: tool_call.id,
-                                name: tool_call.name,
-                                display_name: tool_call.display_name,
-                                parent_item_id: tool_call.parent_item_id,
-                                arguments_text: tool_call.arguments_text,
-                                status: tool_call.status.unwrap_or_else(|| "completed".to_string()),
-                                content: tool_call.content,
+                            .map(|item| SessionThreadItemDto {
+                                id: item.id,
+                                item_type: item.item_type,
+                                session_id: item.session_id,
+                                turn_id: item.turn_id,
+                                status: item.status,
+                                seq: item.seq,
+                                created_at: item
+                                    .created_at
+                                    .map(|value| format_millis_timestamp(value.as_str())),
+                                updated_at: item
+                                    .updated_at
+                                    .map(|value| format_millis_timestamp(value.as_str())),
+                                parent_id: item.parent_id,
+                                content: item.content,
+                                text: item.text,
+                                prompt: item.prompt,
+                                revised_prompt: item.revised_prompt,
+                                model: item.model,
+                                size: item.size,
+                                quality: item.quality,
+                                count: item.count,
+                                source_tool_call_id: item.source_tool_call_id,
+                                source_tool_name: item.source_tool_name,
+                                images: item
+                                    .images
+                                    .into_iter()
+                                    .map(|image| SessionThreadItemImageDto {
+                                        url: image.url,
+                                        mime_type: image.mime_type,
+                                        size_bytes: image.size_bytes,
+                                    })
+                                    .collect(),
                             })
                             .collect(),
                     })
@@ -213,6 +245,9 @@ pub async fn rename_session(
                 id: session.id,
                 title: session.title,
                 status: session.status,
+                transcript_version: Some(session.transcript_version),
+                transcript_migration_status: Some(session.transcript_migration_status),
+                transcript_migration_error: session.transcript_migration_error,
                 created_at: format_millis_timestamp(session.created_at.as_str()),
                 updated_at: format_millis_timestamp(session.updated_at.as_str()),
             }),

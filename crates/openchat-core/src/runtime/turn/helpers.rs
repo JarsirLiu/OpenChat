@@ -12,3 +12,12 @@ pub fn now_string() -> String {
         .format(&Rfc3339)
         .expect("format Shanghai timestamp")
 }
+
+pub fn now_millis() -> u128 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time went backwards")
+        .as_millis()
+}

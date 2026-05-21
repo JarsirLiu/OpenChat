@@ -9,6 +9,19 @@ pub trait ChatRepository: Send + Sync {
         session_id: &'a str,
     ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>;
 
+    fn promote_session_transcript_to_v2<'a>(
+        &'a self,
+        user_id: &'a str,
+        session_id: &'a str,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>;
+
+    fn mark_session_transcript_migration_failed<'a>(
+        &'a self,
+        user_id: &'a str,
+        session_id: &'a str,
+        error: &'a str,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>;
+
     fn get_session<'a>(
         &'a self,
         user_id: &'a str,
@@ -60,33 +73,7 @@ pub trait ChatRepository: Send + Sync {
         Box<dyn core::future::Future<Output = anyhow::Result<PersistedTurnPage>> + Send + 'a>,
     >;
 
-    fn list_session_messages<'a>(
-        &'a self,
-        user_id: &'a str,
-        session_id: &'a str,
-    ) -> core::pin::Pin<
-        Box<
-            dyn core::future::Future<
-                    Output = anyhow::Result<Vec<openchat_infra::stores::PersistedSessionMessage>>,
-                > + Send
-                + 'a,
-        >,
-    >;
-
-    fn list_session_tool_calls<'a>(
-        &'a self,
-        user_id: &'a str,
-        session_id: &'a str,
-    ) -> core::pin::Pin<
-        Box<
-            dyn core::future::Future<
-                    Output = anyhow::Result<Vec<openchat_infra::stores::PersistedSessionToolCall>>,
-                > + Send
-                + 'a,
-        >,
-    >;
-
-    fn list_session_messages_for_turns<'a>(
+    fn list_session_thread_items_for_turns<'a>(
         &'a self,
         user_id: &'a str,
         session_id: &'a str,
@@ -94,21 +81,7 @@ pub trait ChatRepository: Send + Sync {
     ) -> core::pin::Pin<
         Box<
             dyn core::future::Future<
-                    Output = anyhow::Result<Vec<openchat_infra::stores::PersistedSessionMessage>>,
-                > + Send
-                + 'a,
-        >,
-    >;
-
-    fn list_session_tool_calls_for_turns<'a>(
-        &'a self,
-        user_id: &'a str,
-        session_id: &'a str,
-        turn_ids: &'a [String],
-    ) -> core::pin::Pin<
-        Box<
-            dyn core::future::Future<
-                    Output = anyhow::Result<Vec<openchat_infra::stores::PersistedSessionToolCall>>,
+                    Output = anyhow::Result<Vec<openchat_infra::stores::PersistedThreadItem>>,
                 > + Send
                 + 'a,
         >,

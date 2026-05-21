@@ -1,7 +1,6 @@
-use openchat_infra::stores::PersistedSessionToolCall;
 use serde_json::Value;
 
-use crate::{parse_media_assets_json, MediaAsset, OutboundToolResult};
+use crate::{MediaAsset, OutboundToolResult};
 
 pub fn format_outbound_tool_result_text(tool_result: &OutboundToolResult) -> String {
     format_tool_result_text(
@@ -51,27 +50,6 @@ pub fn format_tool_result_text(
     lines.join("\n")
 }
 
-pub fn format_persisted_tool_result_text(tool_call: &PersistedSessionToolCall) -> String {
-    let display_name = tool_call
-        .tool_display_name
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or(tool_call.tool_name.as_str());
-    let result = tool_call
-        .result_json
-        .as_deref()
-        .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
-    let media = parse_media_assets_json(tool_call.media_json.as_deref());
-
-    format_tool_result_text(
-        display_name,
-        tool_call.status.as_str(),
-        tool_call.arguments_text.as_deref(),
-        result.as_ref(),
-        media.as_slice(),
-    )
-}
-
 pub fn sanitize_tool_result_json(result: &Value) -> Value {
     let mut sanitized = result.clone();
 
@@ -87,7 +65,8 @@ pub fn count_image_attachments(media: &[MediaAsset]) -> usize {
 }
 
 fn format_image_input_refs(media: &[MediaAsset]) -> Vec<String> {
-    media.iter()
+    media
+        .iter()
         .filter(|media| media.kind == "image")
         .enumerate()
         .flat_map(|(index, media)| {
@@ -104,7 +83,10 @@ fn format_image_input_refs(media: &[MediaAsset]) -> Vec<String> {
             }
 
             if !media.url.trim().is_empty() {
-                lines.push(format!("input_image_url_{item_index}: {}", media.url.trim()));
+                lines.push(format!(
+                    "input_image_url_{item_index}: {}",
+                    media.url.trim()
+                ));
             }
 
             lines

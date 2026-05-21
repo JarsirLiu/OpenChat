@@ -1,6 +1,6 @@
 import type { ToolCallViewModel } from '@openchat/chat-core'
 import type { ToolCallSummary } from '@openchat/protocol'
-import { ImageIcon, Sparkles } from 'lucide-react'
+import { Download, ImageIcon, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { getToolMedia } from './toolCallMeta'
@@ -31,6 +31,38 @@ const parseTimestamp = (value?: string) => {
 
   const parsed = Date.parse(value)
   return Number.isNaN(parsed) ? null : parsed
+}
+
+const sanitizeDownloadName = (value: string) =>
+  value
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
+    .replace(/\s+/g, '-')
+    .slice(0, 60) || 'openchat-image'
+
+const downloadImageAsset = async (url: string, filename: string) => {
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`download failed: ${response.status}`)
+    }
+
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = objectUrl
+    anchor.download = filename
+    anchor.click()
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    return
+  } catch {
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    anchor.target = '_blank'
+    anchor.rel = 'noreferrer'
+    anchor.click()
+  }
 }
 
 const parseArguments = (argumentsText?: string) => {
@@ -68,11 +100,13 @@ export function ImageGenerationCard({
   completedAt,
 }: ImageGenerationCardProps) {
   const [now, setNow] = useState(() => Date.now())
+  const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null)
   const label = toolCall.displayName ?? toolCall.name
   const status = liveState?.status ?? toolCall.status ?? 'completed'
   const prompt = readPrompt(toolCall, liveState)
   const meta = readMeta(toolCall, liveState)
   const images = getToolMedia(toolCall, liveState).filter((item) => item.kind === 'image' && item.url)
+  const downloadBaseName = sanitizeDownloadName(prompt || label || 'openchat-image')
 
   const startedAtMs = parseTimestamp(startedAt)
   const completedAtMs = parseTimestamp(completedAt)
@@ -106,6 +140,16 @@ export function ImageGenerationCard({
     }
   }, [startedAtMs, status])
 
+  const handleDownload = async (url: string, index: number) => {
+    const extension = url.match(/\.([a-zA-Z0-9]+)(?:[?#]|$)/)?.[1] ?? 'png'
+    setDownloadingUrl(url)
+    try {
+      await downloadImageAsset(url, `${downloadBaseName}-${index + 1}.${extension}`)
+    } finally {
+      setDownloadingUrl((current) => (current === url ? null : current))
+    }
+  }
+
   return (
     <article className="lc-image-gen-row">
       <div className="lc-image-gen-gutter" aria-hidden="true">
@@ -124,19 +168,29 @@ export function ImageGenerationCard({
             {images.length > 0 ? (
               <div className={`lc-image-gen-grid ${images.length === 1 ? 'is-single' : ''}`}>
                 {images.map((asset, index) => (
-                  <a
-                    key={`${asset.url}:${index}`}
-                    className="lc-image-gen-image-link"
-                    href={asset.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <img
-                      className="lc-image-gen-image"
-                      src={asset.url}
-                      alt={`${label} result ${index + 1}`}
-                    />
-                  </a>
+                  <div key={`${asset.url}:${index}`} className="lc-image-gen-image-tile">
+                    <a
+                      className="lc-image-gen-image-link"
+                      href={asset.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <img
+                        className="lc-image-gen-image"
+                        src={asset.url}
+                        alt={`${label} result ${index + 1}`}
+                      />
+                    </a>
+                    <button
+                      type="button"
+                      className="lc-image-gen-download-button"
+                      onClick={() => void handleDownload(asset.url, index)}
+                      disabled={downloadingUrl === asset.url}
+                      aria-label={`下载第 ${index + 1} 张原图`}
+                    >
+                      <Download size={14} />
+                    </button>
+                  </div>
                 ))}
               </div>
             ) : (

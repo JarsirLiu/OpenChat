@@ -1,12 +1,12 @@
 use crate::{
     protocol::{
-        serialize_event, ErrorDto, ImageGeneratedEvent, ItemMessageDeltaEvent, ItemStartedEvent,
+        serialize_event, ErrorDto, ItemMessageDeltaEvent, ItemStartedEvent,
         ItemToolCallArgumentsDeltaEvent, ItemToolCallCompletedEvent, ItemToolCallStartedEvent,
         MessageItemDto, ReasoningCompletedEvent, ReasoningDeltaEvent, ReasoningItemDto,
         ReasoningStartedEvent, SessionDto, SessionUpdatedEvent, TerminalReasonDto, ToolCallItemDto,
         TurnCompletedEvent, TurnDto, TurnFailedEvent, TurnStartedEvent,
     },
-    MediaAsset, SessionRuntime, StreamEventPayload,
+    SessionRuntime, StreamEventPayload,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -287,24 +287,6 @@ pub fn build_tool_call_completed_event(
         item_id,
         at,
         item,
-    }
-}
-
-pub fn build_image_generated_event(
-    session_id: String,
-    turn_id: String,
-    at: String,
-    media: MediaAsset,
-    target_item_id: Option<String>,
-) -> ImageGeneratedEvent {
-    ImageGeneratedEvent {
-        event_type: "image_generated",
-        session_id,
-        turn_id,
-        at,
-        media,
-        target_item_id,
-        canvas_id: None,
     }
 }
 

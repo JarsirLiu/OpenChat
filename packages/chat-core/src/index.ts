@@ -8,6 +8,7 @@ import type {
   ToolMedia,
   ToolCallSummary,
 } from '@openchat/protocol'
+export * from './threadRuntime'
 
 export interface ToolCallViewModel {
   id: string
@@ -527,17 +528,6 @@ export const applyStreamEvent = (
               ),
             }
           : state.pendingToolCallsByMessageId,
-      }
-    }
-
-    case 'image_generated': {
-      if (event.media.kind !== 'image') {
-        return state
-      }
-
-      return {
-        ...state,
-        pending: 'image',
       }
     }
 

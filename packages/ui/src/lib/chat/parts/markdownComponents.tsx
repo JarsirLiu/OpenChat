@@ -33,6 +33,15 @@ export const createMarkdownComponents = () => ({
       rel={href?.startsWith('#') ? undefined : 'noreferrer noopener'}
     />
   ),
+  img: ({ src, alt, ...props }: ComponentPropsWithoutRef<'img'>) => (
+    <img
+      {...props}
+      src={src}
+      alt={alt ?? ''}
+      className="lc-message-image"
+      loading="lazy"
+    />
+  ),
   code: ({ className, children, ...props }: ComponentPropsWithoutRef<'code'>) => {
     const language = getCodeLanguage(className)
 

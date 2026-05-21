@@ -120,7 +120,7 @@ impl ImageRuntime {
                 base_url = access.base_url.as_str(),
                 operation = "generate",
                 status_code = status.as_u16(),
-                raw_body = %body,
+                response_summary = %summarize_openai_image_response_body(body.as_str()),
                 "image provider returned a non-success generation response"
             );
             return Err(map_provider_response_error(
@@ -130,8 +130,12 @@ impl ImageRuntime {
             ));
         }
 
-        decode_openai_image_response(response, access.provider_key.as_str(), access.model_name.as_str())
-            .await
+        decode_openai_image_response(
+            response,
+            access.provider_key.as_str(),
+            access.model_name.as_str(),
+        )
+        .await
     }
 
     pub(crate) async fn edit_image(
@@ -153,14 +157,9 @@ impl ImageRuntime {
             prompt_preview = %truncate_for_log(request.prompt.as_str(), 120),
             "sending image edit request"
         );
-        let response = send_image_edit_request_with_retry(
-            &self.client,
-            url.as_str(),
-            access,
-            request,
-            inputs,
-        )
-        .await?;
+        let response =
+            send_image_edit_request_with_retry(&self.client, url.as_str(), access, request, inputs)
+                .await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -171,7 +170,7 @@ impl ImageRuntime {
                 base_url = access.base_url.as_str(),
                 operation = "edit",
                 status_code = status.as_u16(),
-                raw_body = %body,
+                response_summary = %summarize_openai_image_response_body(body.as_str()),
                 "image provider returned a non-success edit response"
             );
             return Err(map_provider_response_error(
@@ -181,8 +180,12 @@ impl ImageRuntime {
             ));
         }
 
-        decode_openai_image_response(response, access.provider_key.as_str(), access.model_name.as_str())
-            .await
+        decode_openai_image_response(
+            response,
+            access.provider_key.as_str(),
+            access.model_name.as_str(),
+        )
+        .await
     }
 }
 
@@ -602,7 +605,6 @@ async fn decode_openai_image_response(
         model = model_name,
         status_code = status,
         response_summary = %summarize_openai_image_response_body(raw_body.as_str()),
-        raw_body = %raw_body,
         "received image provider response"
     );
 
@@ -654,10 +656,9 @@ async fn send_image_generation_request_with_retry(
                     debug_error = ?error,
                     "image generation request failed before receiving a response"
                 );
-                return Err(map_runtime_error(
-                    anyhow::Error::new(error)
-                        .context(format!("failed to call image provider `{}`", access.provider_key)),
-                ));
+                return Err(map_runtime_error(anyhow::Error::new(error).context(
+                    format!("failed to call image provider `{}`", access.provider_key),
+                )));
             }
         }
     }
@@ -711,10 +712,9 @@ async fn send_image_edit_request_with_retry(
                     debug_error = ?error,
                     "image edit request failed before receiving a response"
                 );
-                return Err(map_runtime_error(
-                    anyhow::Error::new(error)
-                        .context(format!("failed to call image provider `{}`", access.provider_key)),
-                ));
+                return Err(map_runtime_error(anyhow::Error::new(error).context(
+                    format!("failed to call image provider `{}`", access.provider_key),
+                )));
             }
         }
     }
@@ -850,7 +850,7 @@ async fn decode_openai_image_payload(
                     image_url = %url,
                     status_code = status.as_u16(),
                     content_type = %content_type,
-                    raw_body = %body,
+                    body_preview = %truncate_for_log(body.as_str(), 200),
                     "image output download returned a non-success response"
                 );
                 return Err(ChatServiceError::new(
@@ -1183,8 +1183,8 @@ struct OpenAiImageResponseError {
 mod tests {
     use super::{
         decode_base64_generated_image, decode_openai_image_payload, find_history_media_id,
-        parse_image_generation_request, OpenAiImageData, OpenAiImageResponse, OpenAiImageResponseError,
-        ImageToolOperation,
+        parse_image_generation_request, ImageToolOperation, OpenAiImageData, OpenAiImageResponse,
+        OpenAiImageResponseError,
     };
     use crate::{
         ImageToolDefaults, MediaAsset, OutboundContentPart, OutboundMessage, OutboundToolCall,

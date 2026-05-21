@@ -12,10 +12,13 @@
     "dev:web": "pnpm --filter @openchat/web dev",
     "build": "pnpm --filter @openchat/web build",
     "typecheck": "pnpm --filter @openchat/web typecheck",
-    "check:server": "cargo check --workspace"
+    "check:server": "cargo check --workspace",
+    "test:chat-core": "vitest run packages/chat-core/src/threadRuntime.test.ts",
+    "test:client-state": "vitest run packages/chat-core/src/threadRuntime.test.ts apps/web/src/features/chat/useChatWorkspace.test.ts"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
+    "vitest": "^4.1.7",
     "wait-on": "^9.0.10"
   }
 }

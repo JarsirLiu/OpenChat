@@ -1,4 +1,5 @@
-import { Conversation } from '@openchat/ui'
+import { ThreadConversation } from '@openchat/ui'
+import type { ChatRuntimeV2State } from '@openchat/chat-core'
 import { ChatComposer } from './ChatComposer'
 import { ChatLanding } from './ChatLanding'
 
@@ -7,9 +8,16 @@ export interface ChatWorkspaceMainPaneProps {
   currentUsername?: string | null
   input: string
   pending: boolean
-  requestPending: boolean
   runtimeMessagesEmpty: boolean
-  runtimeState: Parameters<typeof Conversation>[0]['state']
+  runtimeV2State: ChatRuntimeV2State
+  optimisticUserPreviews: Record<
+    string,
+    {
+      sessionId: string
+      text: string
+      createdAt: string
+    }
+  >
   selectedImageToolAvailable: boolean
   selectedImageToolKey: string | null
   selectedImageToolLabel: string
@@ -51,9 +59,9 @@ export function ChatWorkspaceMainPane({
   onSubmit,
   onUploadImages,
   pending,
-  requestPending,
   runtimeMessagesEmpty,
-  runtimeState,
+  runtimeV2State,
+  optimisticUserPreviews,
   desktop = false,
   selectedImageToolAvailable,
   selectedImageToolKey,
@@ -70,35 +78,37 @@ export function ChatWorkspaceMainPane({
     <>
       <div
         ref={onScrollContainerReady}
-        className={
-          runtimeMessagesEmpty
-            ? 'min-h-0 flex-1 overflow-y-auto px-3 sm:px-4'
-            : 'flex-1 overflow-y-auto'
-        }
+        className="relative z-0 min-h-0 flex-1 overflow-y-auto px-3 sm:px-4"
       >
         <div
-          className={
-            runtimeMessagesEmpty
-              ? `mx-auto flex min-h-full w-full flex-col py-4 sm:py-6 ${
-                  desktop ? 'lg:max-w-[800px]' : 'max-w-[800px]'
-                }`
-              : `mx-auto w-full px-4 py-4 sm:px-6 sm:py-6 ${
-                  desktop ? 'lg:max-w-[800px] lg:px-0' : 'max-w-[800px]'
-                }`
-          }
+          className={`mx-auto flex min-h-full w-full flex-col py-4 sm:py-6 ${
+            desktop ? 'lg:max-w-[800px]' : 'max-w-[800px]'
+          }`}
         >
-          {runtimeMessagesEmpty ? (
-            <ChatLanding
-              username={currentUsername}
-              providerInitial={selectedProviderInitial}
-            />
-          ) : (
-            <Conversation state={runtimeState} requestPending={requestPending} />
-          )}
+          <div className="relative min-h-full flex-1">
+            <div
+              className={
+                runtimeMessagesEmpty
+                  ? 'pointer-events-auto absolute inset-0 opacity-100 transition-opacity duration-150'
+                  : 'pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-150'
+              }
+            >
+              <ChatLanding
+                username={currentUsername}
+                providerInitial={selectedProviderInitial}
+              />
+            </div>
+            <div className="relative z-10">
+              <ThreadConversation
+                state={runtimeV2State}
+                optimisticUserPreviews={optimisticUserPreviews}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="border-t border-gray-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3 backdrop-blur-sm dark:border-gray-800 dark:bg-[#121212]/95 sm:px-4 sm:pt-4">
+      <div className="relative z-20 shrink-0 border-t border-gray-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3 backdrop-blur-sm dark:border-gray-800 dark:bg-[#121212]/95 sm:px-4 sm:pt-4">
         <div className={`mx-auto ${desktop ? 'lg:max-w-[800px]' : 'max-w-[800px]'}`}>
           <ChatComposer
             value={input}

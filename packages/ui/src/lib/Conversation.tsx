@@ -7,6 +7,9 @@ import { ImageGenerationCard } from './chat/ImageGenerationCard'
 import { ContentLoading } from './chat/parts/ContentLoading'
 import { isImageToolCall } from './chat/toolCallMeta'
 
+// COMPATIBILITY LAYER (legacy message-first transcript):
+// Keep this component only for old ChatMessage[] rendering during migration.
+// New product behavior must be implemented in ThreadConversation.tsx.
 interface ConversationProps {
   state: ChatRuntimeState
   requestPending?: boolean

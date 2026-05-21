@@ -266,9 +266,14 @@
 
 .lc-message-image {
   display: block;
-  width: min(100%, 420px);
+  width: min(100%, 132px);
+  max-width: 132px;
+  height: 132px;
+  max-height: 132px;
   border: 1px solid #e5e7eb;
   border-radius: 18px;
+  object-fit: cover;
+  background: #f8fafc;
 }
 
 .lc-user-message-images {
@@ -613,217 +618,444 @@
   object-fit: cover;
 }
 
-.lc-image-gen-row {
-  display: flex;
-  width: 100%;
-  padding: 8px 8px 12px;
-  gap: 10px;
-}
-
-.lc-image-gen-gutter {
-  width: 32px;
-  flex-shrink: 0;
-  display: flex;
-  justify-content: center;
-}
-
-.lc-image-gen-badge {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #92400e;
-  background:
-    radial-gradient(circle at 30% 25%, rgba(255, 247, 237, 0.95), rgba(255, 237, 213, 0.95) 55%, rgba(253, 230, 138, 0.8));
-  border: 1px solid rgba(251, 191, 36, 0.35);
-  box-shadow: 0 10px 24px rgba(251, 191, 36, 0.16);
-}
-
-.lc-image-gen-main {
-  min-width: 0;
-  flex: 1;
+/* LobeHub 风格：一体化轻量高透外壳 */
+.lc-image-gen-shell {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  margin: 6px 0;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.lc-image-gen-heading {
+.dark .lc-image-gen-shell {
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(20, 20, 20, 0.45);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* 完美融入容器的 Header 状态折叠栏 */
+.lc-image-gen-summary {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: #52525b;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.dark .lc-image-gen-summary {
+  color: #a1a1aa;
+}
+
+.lc-image-gen-summary:hover {
+  background: rgba(0, 0, 0, 0.02);
+  color: #18181b;
+}
+
+.dark .lc-image-gen-summary:hover {
+  background: rgba(255, 255, 255, 0.02);
+  color: #fafafa;
+}
+
+.lc-image-gen-summary-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
 }
 
-.lc-image-gen-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #111827;
+.lc-image-gen-summary-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f59e0b;
+  filter: drop-shadow(0 2px 4px rgba(245, 158, 11, 0.25));
 }
 
-.lc-image-gen-subtitle {
-  min-width: 0;
+.lc-image-gen-summary-title {
   font-size: 12px;
-  color: #6b7280;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.lc-image-gen-summary-status {
+  color: #71717a;
+  font-size: 11px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 500;
+  margin-left: 2px;
 }
 
-.lc-image-gen-card {
-  position: relative;
-  overflow: hidden;
-  border-radius: 24px;
-  border: 1px solid rgba(229, 231, 235, 0.95);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 250, 251, 0.94)),
-    radial-gradient(circle at top left, rgba(255, 237, 213, 0.7), transparent 42%);
-  box-shadow:
-    0 20px 40px rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  padding: 14px;
+.dark .lc-image-gen-summary-status {
+  color: #8c8c8c;
 }
 
-.lc-image-gen-preview {
-  position: relative;
-  min-height: 220px;
-  border-radius: 20px;
-  overflow: hidden;
-  background:
-    linear-gradient(135deg, rgba(255, 250, 245, 0.96), rgba(243, 244, 246, 0.92)),
-    radial-gradient(circle at 20% 20%, rgba(254, 215, 170, 0.26), transparent 36%),
-    radial-gradient(circle at 80% 18%, rgba(191, 219, 254, 0.22), transparent 30%);
-  border: 1px solid rgba(229, 231, 235, 0.8);
+.lc-image-gen-summary-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
+.lc-image-gen-summary-time {
+  color: #71717a;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.dark .lc-image-gen-summary-time {
+  color: #a1a1aa;
+}
+
+.lc-image-gen-summary-chevron {
+  color: #a1a1aa;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.lc-image-gen-summary-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+/* 一体化内容区（与 Header 之间带有极隐蔽分隔线） */
+.lc-image-gen-body {
+  width: 100%;
+  padding: 8px 12px 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+  transition: all 0.25s ease;
+}
+
+.dark .lc-image-gen-body {
+  border-top-color: rgba(255, 255, 255, 0.04);
+}
+
+/* 极致通透：108px 高品质小网格直接出图 */
 .lc-image-gen-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-  padding: 10px;
-  min-height: 220px;
+  width: 100%;
+  max-width: 620px;
 }
 
 .lc-image-gen-grid.is-single {
   grid-template-columns: minmax(0, 1fr);
+  max-width: 300px;
+}
+
+.lc-image-gen-image-tile {
+  position: relative;
+  width: 100%;
+}
+
+.lc-image-gen-grid.is-single .lc-image-gen-image-tile {
+  width: 100%;
 }
 
 .lc-image-gen-image-link {
   display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
   overflow: hidden;
-  border-radius: 16px;
-  border: 1px solid rgba(229, 231, 235, 0.9);
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.dark .lc-image-gen-image-link {
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+.lc-image-gen-image-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.dark .lc-image-gen-image-link:hover {
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.25);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .lc-image-gen-image {
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 220px;
   object-fit: cover;
 }
 
+.lc-image-gen-download-button {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.28);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.lc-image-gen-image-tile:hover .lc-image-gen-download-button,
+.lc-image-gen-image-tile:focus-within .lc-image-gen-download-button {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lc-image-gen-download-button:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(17, 24, 39, 0.48);
+}
+
+.lc-image-gen-download-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.lc-image-gen-download-button:disabled {
+  cursor: wait;
+  opacity: 1;
+}
+
+.dark .lc-image-gen-download-button {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(15, 23, 42, 0.38);
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.dark .lc-image-gen-download-button:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(15, 23, 42, 0.58);
+}
+
 .lc-image-gen-placeholder {
-  min-height: 220px;
+  position: relative;
+  width: 220px;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.dark .lc-image-gen-placeholder {
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(20, 20, 20, 0.35);
+}
+
+/* 极光背景动画漂移 */
+.lc-image-gen-placeholder.is-loading .lc-image-gen-placeholder-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: radial-gradient(circle at 20% 30%, rgba(254, 215, 170, 0.2), transparent 50%),
+              radial-gradient(circle at 80% 70%, rgba(191, 219, 254, 0.2), transparent 50%);
+  background-size: 200% 200%;
+  animation: lc-aurora-bg 8s ease infinite alternate;
+}
+
+.dark .lc-image-gen-placeholder.is-loading .lc-image-gen-placeholder-glow {
+  background: radial-gradient(circle at 20% 30%, rgba(251, 146, 60, 0.08), transparent 55%),
+              radial-gradient(circle at 80% 70%, rgba(96, 165, 250, 0.1), transparent 55%);
+  background-size: 200% 200%;
+  animation: lc-aurora-bg 8s ease infinite alternate;
+}
+
+/* 算力扫光 */
+.lc-image-gen-placeholder.is-loading::after {
+  content: "";
+  position: absolute;
+  inset: -100% -100% 200% 200%;
+  background: linear-gradient(
+    120deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.1) 45%,
+    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0.1) 55%,
+    transparent 65%
+  );
+  z-index: 2;
+  transform: rotate(-12deg);
+  animation: lc-shimmer-sweep 2.8s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+
+.dark .lc-image-gen-placeholder.is-loading::after {
+  background: linear-gradient(
+    120deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.03) 45%,
+    rgba(255, 255, 255, 0.06) 50%,
+    rgba(255, 255, 255, 0.03) 55%,
+    transparent 65%
+  );
+}
+
+/* 磨砂微卡 */
+.lc-image-gen-loading-card {
+  position: relative;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  color: #6b7280;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
-.lc-image-gen-placeholder-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 18px;
+.dark .lc-image-gen-loading-card {
+  background: rgba(15, 15, 15, 0.45);
+}
+
+/* 微型 Loader */
+.lc-image-gen-spinner-container {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #9a3412;
-  background: linear-gradient(180deg, rgba(255, 247, 237, 0.96), rgba(255, 237, 213, 0.96));
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  box-shadow: 0 12px 24px rgba(251, 191, 36, 0.14);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
 }
 
-.lc-image-gen-placeholder-text {
-  font-size: 14px;
-  font-weight: 600;
+.dark .lc-image-gen-spinner-container {
+  background: rgba(245, 158, 11, 0.06);
+  border-color: rgba(245, 158, 11, 0.18);
 }
 
-.lc-image-gen-timer {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 84px;
-  height: 34px;
-  padding: 0 14px;
-  border-radius: 999px;
-  color: #111827;
+.lc-image-gen-loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* 精美等宽秒表 */
+.lc-image-gen-loading-timer {
   font-size: 13px;
   font-weight: 700;
-  backdrop-filter: blur(14px);
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  color: #18181b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
-.lc-image-gen-prompt {
-  margin: 12px 2px 0;
-  color: #374151;
-  font-size: 13px;
-  line-height: 1.7;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+.dark .lc-image-gen-loading-timer {
+  color: #f4f4f5;
 }
 
-.lc-image-gen-meta {
+/* 微型失败卡 */
+.lc-image-gen-failed-card {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  background: rgba(254, 242, 242, 0.5);
+  border: 1px solid rgba(239, 68, 68, 0.1);
+  color: #ef4444;
 }
 
-.lc-image-gen-meta-chip {
-  display: inline-flex;
-  align-items: center;
+.dark .lc-image-gen-failed-card {
+  background: rgba(127, 29, 29, 0.12);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.lc-image-gen-failed-icon {
+  width: 28px;
   height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(229, 231, 235, 0.9);
-  color: #6b7280;
-  font-size: 12px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.lc-image-gen-failed-text {
+  font-size: 10px;
   font-weight: 600;
+}
+
+@keyframes lc-aurora-bg {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes lc-shimmer-sweep {
+  0% {
+    left: -150%;
+  }
+  50% {
+    left: 150%;
+  }
+  100% {
+    left: 150%;
+  }
 }
 
 @media (max-width: 640px) {
-  .lc-image-gen-row {
-    padding-left: 0;
-    padding-right: 0;
-  }
-
-  .lc-image-gen-gutter {
-    display: none;
-  }
-
-  .lc-image-gen-preview,
-  .lc-image-gen-placeholder,
-  .lc-image-gen-image {
-    min-height: 190px;
-  }
-
   .lc-image-gen-grid {
-    min-height: 190px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: min(100%, 280px);
+  }
+
+  .lc-image-gen-image-tile,
+  .lc-image-gen-grid.is-single .lc-image-gen-image-tile {
+    width: 100%;
+  }
+
+  .lc-image-gen-placeholder {
+    width: min(100%, 280px);
+  }
+
+  .lc-image-gen-download-button {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

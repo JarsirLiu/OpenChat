@@ -9,7 +9,9 @@ fn shanghai_offset() -> UtcOffset {
 pub fn format_millis_timestamp(raw: &str) -> String {
     raw.parse::<i64>()
         .ok()
-        .and_then(|millis| OffsetDateTime::from_unix_timestamp_nanos((millis as i128) * 1_000_000).ok())
+        .and_then(|millis| {
+            OffsetDateTime::from_unix_timestamp_nanos((millis as i128) * 1_000_000).ok()
+        })
         .map(|datetime| {
             datetime
                 .to_offset(shanghai_offset())

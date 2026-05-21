@@ -56,13 +56,13 @@ export function ChatWorkspace({
     imageMenuItems,
     input,
     pending,
-    requestPending,
     historyHasMore,
     historyLoading,
     loadOlderHistory,
     attachments,
     removeAttachment,
-    runtimeState,
+    runtimeV2State,
+    optimisticUserPreviews,
     selectedImageTool,
     selectedImageToolKey,
     selectedModelSupportsImageInputs,
@@ -139,7 +139,7 @@ export function ChatWorkspace({
     if (scrollRef.current && pending) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [runtimeState.messages, pending])
+  }, [runtimeV2State.turns, pending])
 
   useEffect(() => {
     const container = scrollRef.current
@@ -210,7 +210,7 @@ export function ChatWorkspace({
     }
   }
 
-  const isEmptyState = runtimeState.messages.length === 0
+  const isEmptyState = runtimeV2State.turns.length === 0
   const currentUserInitial = (
     currentUser.username?.slice(0, 1) || currentUser.email.slice(0, 1)
   ).toUpperCase()
@@ -220,9 +220,9 @@ export function ChatWorkspace({
     currentUsername: currentUser.username,
     input,
     pending,
-    requestPending,
     runtimeMessagesEmpty: isEmptyState,
-    runtimeState,
+    runtimeV2State,
+    optimisticUserPreviews,
     selectedImageToolAvailable: selectedImageTool?.available ?? true,
     selectedImageToolKey,
     selectedImageToolLabel: selectedImageTool?.display_name ?? '不使用图片工具',

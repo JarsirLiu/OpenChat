@@ -54,7 +54,7 @@ impl ToolRegistry {
                 function: ToolFunctionSpec {
                     name: tool.id.clone(),
                     description: format!(
-                        "Generate or edit images with {}. Use this when the user explicitly asks to create, draw, generate, or modify an image.",
+                        "Generate or edit images with {}. Use this when the user explicitly asks to create, draw, generate, or modify an image. The UI will render returned images in a dedicated image card, so do not repeat the same image in assistant text, markdown, or bare links.",
                         tool.display_name
                     ),
                     parameters: image_generation_parameters(definition.input_mode, tool.image_defaults.as_ref()),
@@ -127,7 +127,7 @@ fn image_generation_parameters(
             "prompt".to_string(),
             json!({
                 "type": "string",
-                "description": "Required. The image generation or editing prompt."
+                "description": "Required. The image generation or editing prompt. Return the image through the tool result only; do not ask the assistant to repeat the generated image as markdown or as a raw URL in the final text."
             }),
         ),
         (

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  applyStreamEvent,
-  createInitialChatRuntimeState,
-  hydrateChatRuntimeState,
+  applyThreadStreamEvent,
+  appendOptimisticTurn,
+  createInitialChatRuntimeV2State,
+  hydrateChatRuntimeV2State,
 } from '@openchat/chat-core'
-import { type ChatMessage, type ChatStreamEvent } from '@openchat/protocol'
+import { type ChatStreamEvent, type ThreadTurn } from '@openchat/protocol'
 import type { AuthUser } from '../../lib/auth'
 import { authenticatedFetch } from '../../lib/auth'
 import { ApiError, API_ERROR_CODES, CLIENT_ERROR_CODES, ensureOk, toApiError } from '../../lib/apiError'
@@ -25,36 +26,6 @@ import { useSessions } from './useSessions'
 import { createShanghaiTimestamp } from './timestamps'
 import type { UploadedImageAttachment } from './types'
 
-type RuntimeAction =
-  | { type: 'hydrate'; messages: ChatMessage[] }
-  | { type: 'prepend'; messages: ChatMessage[] }
-  | { type: 'stream'; event: ChatStreamEvent }
-  | { type: 'reset' }
-
-const runtimeReducer = (
-  state: ReturnType<typeof createInitialChatRuntimeState>,
-  action: RuntimeAction,
-) => {
-  switch (action.type) {
-    case 'hydrate':
-      return hydrateChatRuntimeState(action.messages)
-    case 'prepend': {
-      const existingIds = new Set(state.messages.map((message) => message.id))
-      const nextMessages = [
-        ...action.messages.filter((message) => !existingIds.has(message.id)),
-        ...state.messages,
-      ]
-      return hydrateChatRuntimeState(nextMessages)
-    }
-    case 'stream':
-      return applyStreamEvent(state, action.event)
-    case 'reset':
-      return createInitialChatRuntimeState()
-    default:
-      return state
-  }
-}
-
 interface UseChatWorkspaceParams {
   currentUser: AuthUser
   onUnauthorized: () => void
@@ -63,7 +34,78 @@ interface UseChatWorkspaceParams {
   onOpenNewSession: () => void
 }
 
+interface OptimisticUserPreview {
+  sessionId: string
+  text: string
+  createdAt: string
+}
+
 const DRAFT_SESSION_ID = '__draft__'
+
+const sortTurnsByStartedAt = (turns: ThreadTurn[]) =>
+  [...turns].sort((left, right) => {
+    const leftAt = Date.parse(left.startedAt ?? '') || 0
+    const rightAt = Date.parse(right.startedAt ?? '') || 0
+    return leftAt - rightAt
+  })
+
+const mergeHydratedTurnsWithLocal = (
+  hydratedTurns: ThreadTurn[],
+  localTurns: ThreadTurn[],
+  activeSessionId: string,
+) => {
+  const mergedById = new Map(hydratedTurns.map((turn) => [turn.id, turn] as const))
+
+  for (const localTurn of localTurns) {
+    if (localTurn.sessionId !== activeSessionId) {
+      continue
+    }
+
+    const hydratedTurn = mergedById.get(localTurn.id)
+    if (!hydratedTurn) {
+      const shouldPreserveLocalOnlyTurn =
+        localTurn.status === 'running' ||
+        localTurn.items.some((item) => item.status === 'in_progress')
+      if (shouldPreserveLocalOnlyTurn) {
+        mergedById.set(localTurn.id, localTurn)
+      }
+      continue
+    }
+
+    mergedById.set(localTurn.id, {
+      ...hydratedTurn,
+      status:
+        hydratedTurn.status === 'running' || localTurn.status === 'running'
+          ? 'running'
+          : hydratedTurn.status,
+      startedAt: hydratedTurn.startedAt ?? localTurn.startedAt,
+      completedAt:
+        hydratedTurn.status === 'running' ? null : hydratedTurn.completedAt ?? localTurn.completedAt,
+    })
+  }
+
+  return sortTurnsByStartedAt([...mergedById.values()])
+}
+
+export const shouldPreserveDraftHandoffState = ({
+  previousSessionId,
+  nextSessionId,
+  pendingSessionHandoffId,
+  runtimeState,
+}: {
+  previousSessionId: string
+  nextSessionId: string
+  pendingSessionHandoffId: string | null
+  runtimeState: {
+    isStreaming: boolean
+    turns: Array<{ sessionId: string }>
+  }
+}) =>
+  previousSessionId === DRAFT_SESSION_ID &&
+  nextSessionId !== DRAFT_SESSION_ID &&
+  (pendingSessionHandoffId === nextSessionId ||
+    (runtimeState.isStreaming &&
+      runtimeState.turns.some((turn) => turn.sessionId === nextSessionId)))
 
 export function useChatWorkspace({
   currentUser,
@@ -73,23 +115,46 @@ export function useChatWorkspace({
   onOpenNewSession,
 }: UseChatWorkspaceParams) {
   const sessionId = activeSessionId ?? DRAFT_SESSION_ID
-  const [runtimeState, dispatch] = useReducer(
-    runtimeReducer,
-    undefined,
-    createInitialChatRuntimeState,
-  )
+  const [runtimeV2State, setRuntimeV2State] = useState(createInitialChatRuntimeV2State)
+  const [optimisticUserPreviews, setOptimisticUserPreviews] = useState<
+    Record<string, OptimisticUserPreview>
+  >({})
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<UploadedImageAttachment[]>([])
   const [requestErrorState, setRequestErrorState] = useState<ApiError | null>(null)
-  const [requestPending, setRequestPending] = useState(false)
+
+  const previousSessionIdRef = useRef(sessionId)
+  const runtimeV2StateRef = useRef(runtimeV2State)
+  const pendingSessionHandoffRef = useRef<string | null>(null)
 
   useEffect(() => {
+    runtimeV2StateRef.current = runtimeV2State
+  }, [runtimeV2State])
+
+  useEffect(() => {
+    const previousSessionId = previousSessionIdRef.current
+    previousSessionIdRef.current = sessionId
+
     ensureSessionPreference(currentUser.id, sessionId)
-    dispatch({ type: 'reset' })
     setInput('')
     setAttachments([])
     setRequestErrorState(null)
-    setRequestPending(false)
+
+    const runtimeState = runtimeV2StateRef.current
+    const shouldPreserveDraftSessionHandoff = shouldPreserveDraftHandoffState({
+      previousSessionId,
+      nextSessionId: sessionId,
+      pendingSessionHandoffId: pendingSessionHandoffRef.current,
+      runtimeState,
+    })
+
+    if (shouldPreserveDraftSessionHandoff) {
+      pendingSessionHandoffRef.current = null
+      return
+    }
+
+    setOptimisticUserPreviews({})
+    setRuntimeV2State(createInitialChatRuntimeV2State())
   }, [currentUser.id, sessionId])
 
   const requestError = requestErrorState?.message ?? null
@@ -147,11 +212,42 @@ export function useChatWorkspace({
     [activeSessionId, sessions],
   )
 
-  const handleHydrate = useCallback((messages: ChatMessage[]) => {
-    dispatch({ type: 'hydrate', messages })
-  }, [])
-  const handlePrependHydrate = useCallback((messages: ChatMessage[]) => {
-    dispatch({ type: 'prepend', messages })
+  const handleHydrateTurns = useCallback((turns: ThreadTurn[]) => {
+    setRuntimeV2State((current) => {
+      const shouldPreserveRunningLocalState =
+        current.isStreaming &&
+        current.turns.some((turn) => turn.sessionId === sessionId)
+
+      if (!shouldPreserveRunningLocalState) {
+        return hydrateChatRuntimeV2State(sortTurnsByStartedAt(turns))
+      }
+
+      return hydrateChatRuntimeV2State(
+        mergeHydratedTurnsWithLocal(turns, current.turns, sessionId),
+      )
+    })
+    setOptimisticUserPreviews((current) => {
+      const next = { ...current }
+      for (const turn of turns) {
+        const hasRealUserMessage = turn.items.some((item) => item.type === 'userMessage')
+        if (hasRealUserMessage || turn.status !== 'running') {
+          delete next[turn.id]
+        }
+      }
+      return next
+    })
+  }, [sessionId])
+  const handlePrependHydrateTurns = useCallback((turns: ThreadTurn[]) => {
+    setRuntimeV2State((current) => {
+      const existingById = new Map(current.turns.map((turn) => [turn.id, turn] as const))
+      const merged = [...turns]
+      for (const turn of current.turns) {
+        if (!existingById.has(turn.id) || !merged.some((candidate) => candidate.id === turn.id)) {
+          merged.push(turn)
+        }
+      }
+      return hydrateChatRuntimeV2State(sortTurnsByStartedAt(merged))
+    })
   }, [])
 
   const handleHydrateSession = useCallback(
@@ -174,14 +270,34 @@ export function useChatWorkspace({
         updatedAt: event.session.updatedAt,
       })
     }
-    dispatch({ type: 'stream', event })
+    if (event.type === 'item.started' && event.item.role === 'user') {
+      setOptimisticUserPreviews((current) => {
+        if (!current[event.turnId]) {
+          return current
+        }
+        const next = { ...current }
+        delete next[event.turnId]
+        return next
+      })
+    }
+    if (event.type === 'turn.completed' || event.type === 'turn.failed') {
+      setOptimisticUserPreviews((current) => {
+        if (!current[event.turnId]) {
+          return current
+        }
+        const next = { ...current }
+        delete next[event.turnId]
+        return next
+      })
+    }
+    setRuntimeV2State((current) => applyThreadStreamEvent(current, event))
   }, [upsertSession])
 
   const { historyHasMore, historyLoading, loadOlderHistory } = useChatStream({
     sessionId,
     enabled: Boolean(activeSessionId && currentSession),
-    onHydrate: handleHydrate,
-    onPrependHydrate: handlePrependHydrate,
+    onHydrateTurns: handleHydrateTurns,
+    onPrependHydrateTurns: handlePrependHydrateTurns,
     onHydrateSession: handleHydrateSession,
     onEvent: handleStreamEvent,
   })
@@ -194,7 +310,7 @@ export function useChatWorkspace({
     })
   }, [currentUser.id, selectedImageToolKey, selectedTextModelId, sessionId])
 
-  const pending = runtimeState.isStreaming
+  const pending = runtimeV2State.isStreaming
   const selectedModelSupportsImageInputs =
     selectedTextModel?.input_modalities?.some((modality) => {
       const normalized = modality.toLowerCase()
@@ -240,53 +356,73 @@ export function useChatWorkspace({
         )
       }
       setRequestErrorState(null)
-      setRequestPending(true)
       const targetSessionId = activeSessionId ?? createSessionId()
       ensureSessionPreference(currentUser.id, targetSessionId)
 
-      try {
-        const response = await ensureOk(await authenticatedFetch('/api/chat', {
-          method: 'POST',
-          body: JSON.stringify(
-            buildChatRequest(
-              targetSessionId,
-              prompt,
-              selectedTextModel,
-              selectedImageTool,
-              attachments,
-            ),
+      const response = await ensureOk(await authenticatedFetch('/api/chat', {
+        method: 'POST',
+        body: JSON.stringify(
+          buildChatRequest(
+            targetSessionId,
+            prompt,
+            selectedTextModel,
+            selectedImageTool,
+            attachments,
           ),
-        }), 'Failed to start OpenChat chat turn')
+        ),
+      }), 'Failed to start OpenChat chat turn')
 
-        const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>
-        if (payload.status !== 'done') {
-          throw new ApiError('OpenChat server did not accept the chat request', {
-            status: 502,
-            code: CLIENT_ERROR_CODES.invalidChatAcceptance.code,
-            category: CLIENT_ERROR_CODES.invalidChatAcceptance.category,
-            retryable: CLIENT_ERROR_CODES.invalidChatAcceptance.retryable,
-          })
-        }
-
-        const acceptedSessionId =
-          typeof payload.session_id === 'string' && payload.session_id.trim()
-            ? payload.session_id
-            : targetSessionId
-
-        const acceptedAt = createShanghaiTimestamp()
-        upsertSession({
-          id: acceptedSessionId,
-          title: null,
-          status: 'running',
-          createdAt: acceptedAt,
-          updatedAt: acceptedAt,
+      const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>
+      if (payload.status !== 'done') {
+        throw new ApiError('OpenChat server did not accept the chat request', {
+          status: 502,
+          code: CLIENT_ERROR_CODES.invalidChatAcceptance.code,
+          category: CLIENT_ERROR_CODES.invalidChatAcceptance.category,
+          retryable: CLIENT_ERROR_CODES.invalidChatAcceptance.retryable,
         })
+      }
 
-        if (!activeSessionId) {
-          onOpenSession(acceptedSessionId)
-        }
-      } finally {
-        setRequestPending(false)
+      const acceptedSessionId =
+        typeof payload.session_id === 'string' && payload.session_id.trim()
+          ? payload.session_id
+          : targetSessionId
+      const acceptedTurnId =
+        typeof payload.turn_id === 'string' && payload.turn_id.trim()
+          ? payload.turn_id
+          : null
+
+      const acceptedAt = createShanghaiTimestamp()
+      upsertSession({
+        id: acceptedSessionId,
+        title: null,
+        status: 'running',
+        createdAt: acceptedAt,
+        updatedAt: acceptedAt,
+      })
+      if (acceptedTurnId) {
+        setRuntimeV2State((current) => {
+          const next = appendOptimisticTurn(current, {
+            id: acceptedTurnId,
+            sessionId: acceptedSessionId,
+            startedAt: acceptedAt,
+          })
+          // Keep ref in sync immediately so session handoff effect does not
+          // observe stale state and reset the just-created optimistic turn.
+          runtimeV2StateRef.current = next
+          return next
+        })
+        setOptimisticUserPreviews((current) => ({
+          ...current,
+          [acceptedTurnId]: {
+            sessionId: acceptedSessionId,
+            text: prompt,
+            createdAt: acceptedAt,
+          },
+        }))
+      }
+      if (!activeSessionId) {
+        pendingSessionHandoffRef.current = acceptedSessionId
+        onOpenSession(acceptedSessionId)
       }
     },
     [
@@ -424,14 +560,16 @@ export function useChatWorkspace({
   )
 
   const handleInterruptTurn = useCallback(async () => {
-    if (!activeSessionId || !runtimeState.isStreaming || !runtimeState.activeTurnId) {
+    const activeTurnId = runtimeV2State.activeTurnId
+    const isStreaming = runtimeV2State.isStreaming
+    if (!activeSessionId || !isStreaming || !activeTurnId) {
       return
     }
 
     try {
       setRequestErrorState(null)
       await ensureOk(await authenticatedFetch(
-        `/api/sessions/${activeSessionId}/turns/${runtimeState.activeTurnId}/interrupt`,
+        `/api/sessions/${activeSessionId}/turns/${activeTurnId}/interrupt`,
         {
           method: 'POST',
         },
@@ -439,7 +577,11 @@ export function useChatWorkspace({
     } catch (error) {
       setRequestErrorState(toApiError(error, 'Failed to stop generation'))
     }
-  }, [activeSessionId, runtimeState.activeTurnId, runtimeState.isStreaming])
+  }, [
+    activeSessionId,
+    runtimeV2State.activeTurnId,
+    runtimeV2State.isStreaming,
+  ])
 
   return {
     catalogError,
@@ -455,10 +597,10 @@ export function useChatWorkspace({
     imageTools,
     input,
     pending,
-    requestPending,
     requestError,
     requestErrorCode,
-    runtimeState,
+    runtimeV2State,
+    optimisticUserPreviews,
     historyHasMore,
     historyLoading,
     loadOlderHistory,

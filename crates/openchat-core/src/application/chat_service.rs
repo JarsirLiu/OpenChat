@@ -4,12 +4,10 @@ use openchat_infra::stores::{PersistedSession, PersistedTurnPage};
 use tokio::sync::broadcast;
 
 use crate::{
-    build_session_context, collect_attached_tool_calls, normalize_session_history,
-    parse_media_assets_json,
-    protocol::{MessageSnapshotDto, ToolCallSummaryDto},
-    session_history_window_size, tool_result_to_content_json, ActiveTurnHandle, ChatRequest,
-    ChatServiceError, OutboundToolResult, SessionContext, SessionRuntime, StreamEventPayload,
-    TurnAccepted, TurnPlan,
+    build_session_context, normalize_thread_item_history,
+    protocol::{GeneratedImageAssetDto, ThreadItemSnapshotDto, TurnSnapshotDto},
+    session_history_window_size, ActiveTurnHandle, ChatRequest, ChatServiceError, SessionContext,
+    SessionRuntime, StreamEventPayload, TurnAccepted, TurnPlan,
 };
 
 use super::ports::{ActiveTurnRegistryPort, ChatRepository, SessionRuntimeRegistry};
@@ -23,7 +21,7 @@ pub trait TurnBuilder: Send + Sync {
 }
 
 pub struct SessionMessagesSnapshotPage {
-    pub messages: Vec<MessageSnapshotDto>,
+    pub turns: Vec<TurnSnapshotDto>,
     pub has_more: bool,
     pub next_before_turn_id: Option<String>,
 }
@@ -68,6 +66,33 @@ impl ChatService {
             .ensure_session(request.user_id.as_str(), request.session_id.as_str())
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
+        let session = self
+            .chat_store
+            .get_session(request.user_id.as_str(), request.session_id.as_str())
+            .await
+            .map_err(|error| ChatServiceError::new(500, error.to_string()))?
+            .ok_or_else(|| ChatServiceError::session_not_found("Session not found"))?;
+        if session.transcript_version != "v2" {
+            if let Err(error) = self
+                .chat_store
+                .promote_session_transcript_to_v2(
+                    request.user_id.as_str(),
+                    request.session_id.as_str(),
+                )
+                .await
+            {
+                let migration_error = error.to_string();
+                let _ = self
+                    .chat_store
+                    .mark_session_transcript_migration_failed(
+                        request.user_id.as_str(),
+                        request.session_id.as_str(),
+                        migration_error.as_str(),
+                    )
+                    .await;
+                return Err(ChatServiceError::new(500, migration_error));
+            }
+        }
         let context = self
             .load_session_history(request.user_id.as_str(), request.session_id.as_str())
             .await?;
@@ -199,9 +224,9 @@ impl ChatService {
         session_id: &str,
         before_turn_id: Option<&str>,
     ) -> Result<SessionMessagesSnapshotPage, ChatServiceError> {
-        if self.get_session(user_id, session_id).await?.is_none() {
-            return Err(ChatServiceError::session_not_found("Session not found"));
-        }
+        self.get_session(user_id, session_id)
+            .await?
+            .ok_or_else(|| ChatServiceError::session_not_found("Session not found"))?;
 
         self.reconcile_session_runtime_state(user_id, session_id)
             .await?;
@@ -216,77 +241,77 @@ impl ChatService {
             )
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
-        let messages = self
+        let thread_items = self
             .chat_store
-            .list_session_messages_for_turns(user_id, session_id, turn_page.turn_ids.as_slice())
+            .list_session_thread_items_for_turns(user_id, session_id, turn_page.turn_ids.as_slice())
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
-        let tool_calls = self
-            .chat_store
-            .list_session_tool_calls_for_turns(user_id, session_id, turn_page.turn_ids.as_slice())
-            .await
-            .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
+        let turns = turn_page
+            .turn_ids
+            .iter()
+            .map(|turn_id| {
+                let items = thread_items
+                    .iter()
+                    .filter(|item| item.turn_id == *turn_id)
+                    .map(|item| ThreadItemSnapshotDto {
+                        id: item.id.clone(),
+                        item_type: item.item_type.clone(),
+                        session_id: item.session_id.clone(),
+                        turn_id: item.turn_id.clone(),
+                        status: item.status.clone(),
+                        seq: item.seq.unwrap_or_default(),
+                        created_at: None,
+                        updated_at: None,
+                        parent_id: item.parent_id.clone(),
+                        content: item.content_json.as_deref().and_then(|value| {
+                            serde_json::from_str::<serde_json::Value>(value).ok()
+                        }),
+                        text: item.text.clone(),
+                        prompt: item.prompt.clone(),
+                        revised_prompt: item.revised_prompt.clone(),
+                        model: item.model.clone(),
+                        size: item.size.clone(),
+                        quality: item.quality.clone(),
+                        count: item.count.map(|value| value as u32),
+                        source_tool_call_id: item.source_tool_call_id.clone(),
+                        source_tool_name: item.source_tool_name.clone(),
+                        images: item
+                            .images_json
+                            .as_deref()
+                            .and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok())
+                            .and_then(|value| value.as_array().cloned())
+                            .unwrap_or_default()
+                            .iter()
+                            .filter_map(|entry| {
+                                let url = entry.get("url").and_then(|value| value.as_str())?;
+                                let mime_type =
+                                    entry.get("mimeType").and_then(|value| value.as_str())?;
+                                Some(GeneratedImageAssetDto {
+                                    url: url.to_string(),
+                                    mime_type: mime_type.to_string(),
+                                    size_bytes: entry
+                                        .get("sizeBytes")
+                                        .and_then(|value| value.as_u64()),
+                                })
+                            })
+                            .collect::<Vec<_>>(),
+                    })
+                    .collect::<Vec<_>>();
+
+                TurnSnapshotDto {
+                    id: turn_id.clone(),
+                    session_id: session_id.to_string(),
+                    status: "completed".to_string(),
+                    started_at: None,
+                    completed_at: None,
+                    terminal_reason: None,
+                    items,
+                }
+            })
+            .collect::<Vec<_>>();
 
         Ok(SessionMessagesSnapshotPage {
-            messages: messages
-                .into_iter()
-                .map(|message| {
-                    let attached_tool_calls = if message.role == "assistant" {
-                        let items: Vec<_> = collect_attached_tool_calls(
-                            message.id.as_str(),
-                            message.turn_id.as_str(),
-                            &tool_calls,
-                        )
-                        .iter()
-                        .map(|tool_call| {
-                            let media = parse_media_assets_json(tool_call.media_json.as_deref());
-                            ToolCallSummaryDto {
-                                id: tool_call.id.clone(),
-                                name: tool_call.tool_name.clone(),
-                                display_name: tool_call.tool_display_name.clone(),
-                                parent_item_id: tool_call
-                                    .parent_item_id
-                                    .clone()
-                                    .or_else(|| Some(message.id.clone())),
-                                arguments_text: tool_call.arguments_text.clone(),
-                                status: Some(tool_call.status.clone()),
-                                content: tool_result_to_content_json(&OutboundToolResult {
-                                    tool_call_id: tool_call.id.clone(),
-                                    tool_name: tool_call.tool_name.clone(),
-                                    tool_display_name: tool_call.tool_display_name.clone(),
-                                    status: tool_call.status.clone(),
-                                    arguments_text: tool_call.arguments_text.clone(),
-                                    result: tool_call
-                                        .result_json
-                                        .as_deref()
-                                        .and_then(|value| serde_json::from_str(value).ok())
-                                        .unwrap_or_else(|| serde_json::json!({})),
-                                    media,
-                                }),
-                            }
-                        })
-                        .collect();
-                        if items.is_empty() {
-                            None
-                        } else {
-                            Some(items)
-                        }
-                    } else {
-                        None
-                    };
-
-                    MessageSnapshotDto {
-                        id: message.id,
-                        role: message.role,
-                        turn_id: message.turn_id,
-                        status: message.status,
-                        created_at: message.created_at,
-                        updated_at: message.updated_at,
-                        content: message.content,
-                        tool_calls: attached_tool_calls,
-                    }
-                })
-                .collect(),
+            turns,
             has_more: turn_page.has_more,
             next_before_turn_id: turn_page.next_before_turn_id,
         })
@@ -297,25 +322,24 @@ impl ChatService {
         user_id: &str,
         session_id: &str,
     ) -> Result<SessionContext, ChatServiceError> {
-        if self.get_session(user_id, session_id).await?.is_none() {
-            return Err(ChatServiceError::session_not_found("Session not found"));
-        }
+        self.get_session(user_id, session_id)
+            .await?
+            .ok_or_else(|| ChatServiceError::session_not_found("Session not found"))?;
 
         self.reconcile_session_runtime_state(user_id, session_id)
             .await?;
 
-        let messages = self
+        let turn_page = self
             .chat_store
-            .list_session_messages(user_id, session_id)
+            .list_session_turns_page(user_id, session_id, None, session_history_window_size())
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
-        let tool_calls = self
+        let thread_items = self
             .chat_store
-            .list_session_tool_calls(user_id, session_id)
+            .list_session_thread_items_for_turns(user_id, session_id, turn_page.turn_ids.as_slice())
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
-
-        let history = normalize_session_history(messages, tool_calls);
+        let history = normalize_thread_item_history(thread_items);
 
         Ok(build_session_context(session_id.to_string(), history))
     }

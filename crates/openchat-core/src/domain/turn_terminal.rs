@@ -6,6 +6,7 @@ pub enum TurnTerminalReasonCode {
     SessionRecovered,
     ModelConnectTimeout,
     ModelStreamIdleTimeout,
+    TranscriptProjectionFailed,
     ProviderAuthenticationFailed,
     UpstreamError,
     RuntimeError,
@@ -18,6 +19,7 @@ impl TurnTerminalReasonCode {
             Self::SessionRecovered => "session_recovered",
             Self::ModelConnectTimeout => "model_connect_timeout",
             Self::ModelStreamIdleTimeout => "model_stream_idle_timeout",
+            Self::TranscriptProjectionFailed => "transcript_projection_failed",
             Self::ProviderAuthenticationFailed => "provider_authentication_failed",
             Self::UpstreamError => "upstream_error",
             Self::RuntimeError => "runtime_error",
@@ -62,6 +64,10 @@ impl TurnTerminalReason {
             TurnTerminalReasonCode::ModelStreamIdleTimeout,
             "模型响应超时，请重试或切换模型",
         )
+    }
+
+    pub fn transcript_projection_failed(message: impl Into<String>) -> Self {
+        Self::new(TurnTerminalReasonCode::TranscriptProjectionFailed, message)
     }
 
     pub fn upstream_error(message: impl Into<String>) -> Self {
