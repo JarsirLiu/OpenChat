@@ -1,9 +1,18 @@
-import { useMemo } from 'react'
 import { ChatBrandIcon } from './ChatBrandIcon'
 
 function getGreeting(username?: string | null) {
   const hour = new Date().getHours()
-  const base = hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好'
+  const base = hour < 5
+    ? '夜深了，该休息了'
+    : hour < 11
+      ? '早上好'
+      : hour < 14
+        ? '中午好'
+        : hour < 19
+          ? '下午好'
+          : hour < 23
+            ? '晚上好'
+            : '夜深了，该休息了'
   return `${base}, ${username || 'L'}`
 }
 
@@ -14,7 +23,7 @@ export function ChatLanding({
   username?: string | null
   providerInitial: string
 }) {
-  const greeting = useMemo(() => getGreeting(username), [username])
+  const greeting = getGreeting(username)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center bg-gray-50/30 px-2 py-6 text-center dark:bg-gray-900/30 sm:px-4 sm:py-8">

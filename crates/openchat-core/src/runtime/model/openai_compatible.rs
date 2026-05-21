@@ -3,7 +3,6 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
-use tracing::{info, warn};
 
 use super::{sse::SseDataSource, ModelEventStream, ModelStreamEvent};
 use crate::{
@@ -41,16 +40,6 @@ impl OpenAiCompatibleRuntime {
             self.media_url_resolver.as_ref(),
         )
         .await;
-        info!(
-            provider = access.provider_key.as_str(),
-            model = access.model_name.as_str(),
-            base_url = access.base_url.as_str(),
-            message_count = messages.len(),
-            tool_count = plan.tool_list.len(),
-            attachment_count = plan.attachments.len(),
-            history_count = plan.history.len(),
-            "sending text model request"
-        );
 
         let request_body = OpenAiChatRequest {
             model: access.model_name.clone(),
@@ -74,13 +63,6 @@ impl OpenAiCompatibleRuntime {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            warn!(
-                provider = access.provider_key.as_str(),
-                model = access.model_name.as_str(),
-                status_code = status.as_u16(),
-                body = %truncate_for_log(body.as_str(), 800),
-                "text model request returned a non-success status"
-            );
             return Err(map_provider_response_error(
                 access.provider_key.as_str(),
                 status.as_u16(),
@@ -226,28 +208,9 @@ async fn send_text_request_with_retry(
                 if attempt < MAX_TEXT_SEND_ATTEMPTS
                     && should_retry_transport_error(&error) =>
             {
-                warn!(
-                    provider = access.provider_key.as_str(),
-                    model = access.model_name.as_str(),
-                    base_url = access.base_url.as_str(),
-                    attempt,
-                    max_attempts = MAX_TEXT_SEND_ATTEMPTS,
-                    error = %error,
-                    "retrying text model request after transient transport failure"
-                );
                 sleep(UPSTREAM_RETRY_DELAY).await;
             }
             Err(error) => {
-                warn!(
-                    provider = access.provider_key.as_str(),
-                    model = access.model_name.as_str(),
-                    base_url = access.base_url.as_str(),
-                    attempt,
-                    max_attempts = MAX_TEXT_SEND_ATTEMPTS,
-                    error = %error,
-                    debug_error = ?error,
-                    "text model request failed before receiving a response"
-                );
                 return Err(map_runtime_error(
                     anyhow::Error::new(error)
                         .context(format!("failed to call provider `{}`", access.provider_key)),
@@ -659,16 +622,6 @@ fn should_retry_transport_error(error: &reqwest::Error) -> bool {
     }
 
     false
-}
-
-fn truncate_for_log(value: &str, max_chars: usize) -> String {
-    let mut chars = value.chars();
-    let truncated = chars.by_ref().take(max_chars).collect::<String>();
-    if chars.next().is_some() {
-        format!("{truncated}...")
-    } else {
-        truncated
-    }
 }
 
 #[derive(Serialize)]

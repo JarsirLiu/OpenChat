@@ -22,6 +22,7 @@ import {
 import { compressImageFiles } from './imageCompression'
 import { useModelCatalog } from './useModelCatalog'
 import { useSessions } from './useSessions'
+import { createShanghaiTimestamp } from './timestamps'
 import type { UploadedImageAttachment } from './types'
 
 type RuntimeAction =
@@ -272,12 +273,13 @@ export function useChatWorkspace({
             ? payload.session_id
             : targetSessionId
 
+        const acceptedAt = createShanghaiTimestamp()
         upsertSession({
           id: acceptedSessionId,
           title: null,
           status: 'running',
-          createdAt: Date.now().toString(),
-          updatedAt: Date.now().toString(),
+          createdAt: acceptedAt,
+          updatedAt: acceptedAt,
         })
 
         if (!activeSessionId) {
