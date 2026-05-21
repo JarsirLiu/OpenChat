@@ -84,6 +84,7 @@ export function ProviderSettingsDialog({
   const [modelTypeMenuOpen, setModelTypeMenuOpen] = useState(false)
   const [providerApiKeyVisible, setProviderApiKeyVisible] = useState(false)
   const [customModelApiKeyVisible, setCustomModelApiKeyVisible] = useState(false)
+  const [customModelsExpanded, setCustomModelsExpanded] = useState(false)
   const modelTypePanelRef = useRef<HTMLDivElement | null>(null)
   const providerApiKeyInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -543,13 +544,31 @@ export function ProviderSettingsDialog({
                 </section>
 
                 <section className="px-5 py-5">
-                  <div className="mb-4">
-                    <h3 className="text-[15px] font-semibold text-gray-900 dark:text-white">
-                      自定义模型
-                    </h3>
+                  <div className="mb-1">
+                    <button
+                      type="button"
+                      onClick={() => setCustomModelsExpanded((expanded) => !expanded)}
+                      className="flex w-full items-center justify-between gap-3 rounded-xl px-1 py-1 text-left transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                      aria-expanded={customModelsExpanded}
+                    >
+                      <div>
+                        <h3 className="text-[15px] font-semibold text-gray-900 dark:text-white">
+                          自定义模型
+                        </h3>
+                        <p className="mt-1 text-[13px] leading-6 text-gray-500 dark:text-gray-400">
+                          高级用户可在这里接入额外模型配置。
+                        </p>
+                      </div>
+                      <ChevronDown
+                        className={clsx(
+                          'h-4 w-4 flex-shrink-0 text-gray-400 transition-transform',
+                          customModelsExpanded && 'rotate-180',
+                        )}
+                      />
+                    </button>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className={clsx('space-y-3 pt-3', !customModelsExpanded && 'hidden')}>
                     <div className="space-y-3">
                       <form
                         className="space-y-3"
