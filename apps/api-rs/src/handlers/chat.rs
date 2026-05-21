@@ -134,6 +134,30 @@ async fn normalize_attachments(
     Ok(())
 }
 
+async fn bind_attachments_to_session(
+    state: &AppState,
+    user_id: &str,
+    session_id: &str,
+    payload: &ChatRequestDto,
+) -> Result<(), ErrorResponseDto> {
+    let object_keys = payload
+        .attachments
+        .as_ref()
+        .map(|attachments| {
+            attachments
+                .iter()
+                .map(|attachment| attachment.id.clone())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    state
+        .media_store
+        .assign_session_to_existing_objects(user_id, session_id, object_keys.as_slice())
+        .await
+        .map_err(|error| ErrorResponseDto::from_code(VALIDATION_ERROR, error.to_string()))
+}
+
 pub async fn send_message(
     State(state): State<AppState>,
     CurrentUser(auth): CurrentUser,
@@ -141,6 +165,16 @@ pub async fn send_message(
 ) -> impl IntoResponse {
     if let Err(error) = normalize_attachments(&state, auth.user_id(), &mut payload).await {
         return (StatusCode::FORBIDDEN, Json(error)).into_response();
+    }
+    if let Err(error) = bind_attachments_to_session(
+        &state,
+        auth.user_id(),
+        payload.session_id.as_str(),
+        &payload,
+    )
+    .await
+    {
+        return (StatusCode::BAD_REQUEST, Json(error)).into_response();
     }
 
     if let Some(selected_text_model) = payload.text_model.as_ref() {

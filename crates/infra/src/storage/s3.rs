@@ -127,4 +127,21 @@ impl ObjectStore for S3CompatibleObjectStore {
             bytes,
         }))
     }
+
+    async fn delete_object(&self, key: &str) -> Result<bool> {
+        self.client
+            .delete_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .send()
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to delete object `{key}` from bucket `{}`",
+                    self.bucket
+                )
+            })?;
+
+        Ok(true)
+    }
 }

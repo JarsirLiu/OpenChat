@@ -135,6 +135,36 @@ pub(crate) async fn migrate(pool: &PgPool) -> anyhow::Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_media_objects_user ON media_objects(user_id)")
         .execute(pool)
         .await?;
+    ensure_postgres_column(pool, "media_objects", "turn_id", "TEXT").await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_media_objects_user_turn ON media_objects(user_id, turn_id)",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cleanup_jobs (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          job_type TEXT NOT NULL,
+          object_key TEXT NOT NULL,
+          status TEXT NOT NULL,
+          retry_count BIGINT NOT NULL,
+          max_retries BIGINT NOT NULL,
+          next_attempt_at BIGINT NOT NULL,
+          last_error TEXT,
+          created_at BIGINT NOT NULL,
+          updated_at BIGINT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_cleanup_jobs_pending ON cleanup_jobs(status, next_attempt_at, created_at)",
+    )
+    .execute(pool)
+    .await?;
     ensure_postgres_column(
         pool,
         "user_custom_models",
@@ -553,6 +583,7 @@ const POSTGRES_MIGRATIONS: &[&str] = &[
       object_key TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+      turn_id TEXT REFERENCES turns(id) ON DELETE CASCADE,
       created_at BIGINT NOT NULL
     )
     "#,

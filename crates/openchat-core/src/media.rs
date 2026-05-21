@@ -105,6 +105,7 @@ pub trait MediaStore: Send + Sync {
         content_type: &'a str,
         owner_user_id: &'a str,
         session_id: Option<&'a str>,
+        turn_id: Option<&'a str>,
     ) -> PutMediaFuture<'a>;
 
     fn get_bytes<'a>(

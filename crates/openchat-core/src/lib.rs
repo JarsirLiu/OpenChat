@@ -15,8 +15,9 @@ pub use adapters::context::{
     OutboundContentPart, OutboundMessage, OutboundToolCall, OutboundToolResult, SessionContext,
 };
 pub use application::{
-    ActiveTurnRegistryPort, ChatRepository, ChatService, SessionMessagesSnapshotPage,
-    SessionRuntimeRegistry, TurnBuilder, TurnRunner,
+    ActiveTurnRegistryPort, ChatRepository, ChatService, SessionMediaManagerPort,
+    SessionMessagesSnapshotPage, SessionRuntimeRegistry, TurnBuilder, TurnRunner,
+    UserSessionRetentionPort, UserTurnRetentionPort,
 };
 pub use domain::{
     ChatRequest, SelectedTextModel, SelectedTool, TurnAccepted, TurnAttachment, TurnContext,

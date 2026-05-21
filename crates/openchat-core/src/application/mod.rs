@@ -3,4 +3,7 @@ mod default_adapters;
 pub mod ports;
 
 pub use chat_service::{ChatService, SessionMessagesSnapshotPage, TurnBuilder, TurnRunner};
-pub use ports::{ActiveTurnRegistryPort, ChatRepository, SessionRuntimeRegistry};
+pub use ports::{
+    ActiveTurnRegistryPort, ChatRepository, SessionMediaManagerPort, SessionRuntimeRegistry,
+    UserSessionRetentionPort, UserTurnRetentionPort,
+};

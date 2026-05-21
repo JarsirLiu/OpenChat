@@ -89,6 +89,12 @@ pub struct PersistedTurnPage {
     pub next_before_turn_id: Option<String>,
 }
 
+#[derive(Clone)]
+pub struct PersistedTurnRef {
+    pub id: String,
+    pub session_id: String,
+}
+
 impl ChatStore {
     pub fn new(pool: Arc<DatabasePool>) -> Self {
         Self { pool }
@@ -1391,6 +1397,88 @@ impl ChatStore {
         Ok(rows_affected > 0)
     }
 
+    pub async fn list_stale_sessions_for_user(
+        &self,
+        user_id: &str,
+        keep_latest: usize,
+    ) -> anyhow::Result<Vec<String>> {
+        let offset = i64::try_from(keep_latest).unwrap_or(i64::MAX);
+        match self.pool.as_ref() {
+            DatabasePool::Compat(pool) => {
+                sqlx::query_scalar::<_, String>(
+                    r#"
+                    SELECT id
+                    FROM sessions
+                    WHERE user_id = ?1
+                    ORDER BY updated_at DESC, created_at DESC, id DESC
+                    OFFSET ?2
+                    "#,
+                )
+                .bind(user_id)
+                .bind(offset)
+                .fetch_all(pool)
+                .await
+            }
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_scalar::<_, String>(
+                    r#"
+                    SELECT id
+                    FROM sessions
+                    WHERE user_id = $1
+                    ORDER BY updated_at DESC, created_at DESC, id DESC
+                    OFFSET $2
+                    "#,
+                )
+                .bind(user_id)
+                .bind(offset)
+                .fetch_all(pool)
+                .await
+            }
+        }
+        .context("failed to list stale user sessions")
+    }
+
+    pub async fn delete_sessions_for_user(
+        &self,
+        user_id: &str,
+        session_ids: &[String],
+    ) -> anyhow::Result<()> {
+        if session_ids.is_empty() {
+            return Ok(());
+        }
+
+        match self.pool.as_ref() {
+            DatabasePool::Compat(pool) => {
+                let mut query = QueryBuilder::new("DELETE FROM sessions WHERE user_id = ");
+                query.push_bind(user_id);
+                query.push(" AND id IN (");
+                {
+                    let mut separated = query.separated(", ");
+                    for session_id in session_ids {
+                        separated.push_bind(session_id);
+                    }
+                }
+                query.push(")");
+                query.build().execute(pool).await?;
+            }
+            DatabasePool::Postgres(pool) => {
+                let mut query = QueryBuilder::new("DELETE FROM sessions WHERE user_id = ");
+                query.push_bind(user_id);
+                query.push(" AND id IN (");
+                {
+                    let mut separated = query.separated(", ");
+                    for session_id in session_ids {
+                        separated.push_bind(session_id);
+                    }
+                }
+                query.push(")");
+                query.build().execute(pool).await?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn list_session_turns_page(
         &self,
         user_id: &str,
@@ -1488,6 +1576,119 @@ impl ChatStore {
             has_more,
             next_before_turn_id,
         })
+    }
+
+    pub async fn list_stale_turns_for_user(
+        &self,
+        user_id: &str,
+        keep_latest: usize,
+    ) -> anyhow::Result<Vec<PersistedTurnRef>> {
+        let offset = i64::try_from(keep_latest).unwrap_or(i64::MAX);
+        let rows: Vec<(String, String)> = match self.pool.as_ref() {
+            DatabasePool::Compat(pool) => {
+                sqlx::query_as::<_, (String, String)>(
+                    r#"
+                    SELECT id, session_id
+                    FROM turns
+                    WHERE user_id = ?1
+                    ORDER BY started_at DESC, id DESC
+                    OFFSET ?2
+                    "#,
+                )
+                .bind(user_id)
+                .bind(offset)
+                .fetch_all(pool)
+                .await
+            }
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_as::<_, (String, String)>(
+                    r#"
+                    SELECT id, session_id
+                    FROM turns
+                    WHERE user_id = $1
+                    ORDER BY started_at DESC, id DESC
+                    OFFSET $2
+                    "#,
+                )
+                .bind(user_id)
+                .bind(offset)
+                .fetch_all(pool)
+                .await
+            }
+        }
+        .context("failed to list stale user turns")?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, session_id)| PersistedTurnRef { id, session_id })
+            .collect())
+    }
+
+    pub async fn delete_turns_for_user(
+        &self,
+        user_id: &str,
+        turn_ids: &[String],
+    ) -> anyhow::Result<()> {
+        if turn_ids.is_empty() {
+            return Ok(());
+        }
+
+        match self.pool.as_ref() {
+            DatabasePool::Compat(pool) => {
+                let mut query = QueryBuilder::new("DELETE FROM turns WHERE user_id = ");
+                query.push_bind(user_id);
+                query.push(" AND id IN (");
+                {
+                    let mut separated = query.separated(", ");
+                    for turn_id in turn_ids {
+                        separated.push_bind(turn_id);
+                    }
+                }
+                query.push(")");
+                query.build().execute(pool).await?;
+
+                sqlx::query(
+                    r#"
+                    DELETE FROM sessions
+                    WHERE user_id = ?1
+                      AND NOT EXISTS (
+                        SELECT 1 FROM turns WHERE turns.session_id = sessions.id
+                      )
+                    "#,
+                )
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::Postgres(pool) => {
+                let mut query = QueryBuilder::new("DELETE FROM turns WHERE user_id = ");
+                query.push_bind(user_id);
+                query.push(" AND id IN (");
+                {
+                    let mut separated = query.separated(", ");
+                    for turn_id in turn_ids {
+                        separated.push_bind(turn_id);
+                    }
+                }
+                query.push(")");
+                query.build().execute(pool).await?;
+
+                sqlx::query(
+                    r#"
+                    DELETE FROM sessions
+                    WHERE user_id = $1
+                      AND NOT EXISTS (
+                        SELECT 1 FROM turns WHERE turns.session_id = sessions.id
+                      )
+                    "#,
+                )
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn list_session_thread_items_for_turns(

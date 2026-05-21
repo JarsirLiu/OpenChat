@@ -84,6 +84,7 @@ pub async fn upload_images(
                 mime_type.as_str(),
                 auth.user_id(),
                 None,
+                None,
             )
             .await
         {

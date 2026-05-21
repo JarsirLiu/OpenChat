@@ -10,6 +10,7 @@ use crate::{
     SessionRuntime, StreamEventPayload, TurnAccepted, TurnPlan,
 };
 
+use super::ports::SessionMediaManagerPort;
 use super::ports::{ActiveTurnRegistryPort, ChatRepository, SessionRuntimeRegistry};
 
 pub trait TurnBuilder: Send + Sync {
@@ -31,6 +32,7 @@ pub struct ChatService {
     session_store: Arc<dyn SessionRuntimeRegistry>,
     active_turns: Arc<dyn ActiveTurnRegistryPort>,
     chat_store: Arc<dyn ChatRepository>,
+    session_media: Arc<dyn SessionMediaManagerPort>,
     turn_builder: Arc<dyn TurnBuilder>,
     runtime: Arc<dyn TurnRunner>,
 }
@@ -49,6 +51,7 @@ impl ChatService {
         session_store: Arc<dyn SessionRuntimeRegistry>,
         active_turns: Arc<dyn ActiveTurnRegistryPort>,
         chat_store: Arc<dyn ChatRepository>,
+        session_media: Arc<dyn SessionMediaManagerPort>,
         turn_builder: Arc<dyn TurnBuilder>,
         runtime: Arc<dyn TurnRunner>,
     ) -> Self {
@@ -56,6 +59,7 @@ impl ChatService {
             session_store,
             active_turns,
             chat_store,
+            session_media,
             turn_builder,
             runtime,
         }
@@ -193,6 +197,21 @@ impl ChatService {
         user_id: &str,
         session_id: &str,
     ) -> Result<bool, ChatServiceError> {
+        if self
+            .chat_store
+            .get_session(user_id, session_id)
+            .await
+            .map_err(|error| ChatServiceError::new(500, error.to_string()))?
+            .is_none()
+        {
+            return Ok(false);
+        }
+
+        self.session_media
+            .delete_session_media(user_id, session_id)
+            .await
+            .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
+
         let deleted = self
             .chat_store
             .delete_session(user_id, session_id)

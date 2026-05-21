@@ -95,6 +95,30 @@ pub trait ChatRepository: Send + Sync {
     ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>;
 }
 
+pub trait SessionMediaManagerPort: Send + Sync {
+    fn delete_session_media<'a>(
+        &'a self,
+        user_id: &'a str,
+        session_id: &'a str,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>;
+}
+
+pub trait UserTurnRetentionPort: Send + Sync {
+    fn enforce_user_turn_limit<'a>(
+        &'a self,
+        user_id: &'a str,
+        max_turns: usize,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>;
+}
+
+pub trait UserSessionRetentionPort: Send + Sync {
+    fn enforce_user_session_limit<'a>(
+        &'a self,
+        user_id: &'a str,
+        max_sessions: usize,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>;
+}
+
 pub trait SessionRuntimeRegistry: Send + Sync {
     fn session_runtime<'a>(
         &'a self,

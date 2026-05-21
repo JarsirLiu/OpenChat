@@ -235,6 +235,7 @@ where
                     generated.mime_type.as_str(),
                     invocation.user_id.as_str(),
                     Some(invocation.session_id.as_str()),
+                    Some(invocation.turn_id.as_str()),
                 )
                 .await?;
             stored_images.push(stored);

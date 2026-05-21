@@ -10,8 +10,8 @@ use openchat_catalog_core::{CatalogModel, CatalogService, CatalogTurnBuilder};
 use openchat_core::{
     ActiveTurnRegistry, ChatService, ChatServiceError, ImageProviderRuntime, ImageRuntime,
     InMemorySessionStore, MediaStore, ModelMediaUrlResolver, ModelProviderRuntime,
-    OpenAiCompatibleRuntime, OpenChatTurnExecutor, RetrievedMedia, StoredMedia, ToolAccessService,
-    ToolExecutor,
+    OpenAiCompatibleRuntime, OpenChatTurnExecutor, RetrievedMedia, SessionMediaManagerPort,
+    StoredMedia, ToolAccessService, ToolExecutor, UserSessionRetentionPort, UserTurnRetentionPort,
 };
 use openchat_infra::db::Database;
 use openchat_infra::storage::{
@@ -19,12 +19,16 @@ use openchat_infra::storage::{
     StorageBackendConfig,
 };
 use openchat_infra::stores::{
-    AuthStore, CatalogModelRecord, CatalogStore, CatalogToolRecord, ChatStore, CustomModelStore,
-    MediaObjectRecord, MediaObjectStore, UserProviderApiKeyStore,
+    AuthStore, CatalogModelRecord, CatalogStore, CatalogToolRecord, ChatStore, CleanupJobStore,
+    CustomModelStore, MediaObjectRecord, MediaObjectStore, PersistedCleanupJob, PersistedTurnRef,
+    UserProviderApiKeyStore,
 };
 use openchat_security_core::{
     AccessTokenAuthenticator, Authorizer, OwnershipAuthorizer, ResourceTokenService,
 };
+use tracing::warn;
+
+const CLEANUP_JOB_BATCH_SIZE: i64 = 16;
 
 use crate::config::{AppConfig, MediaStorageConfig};
 use crate::security::authenticator::AccountAuthenticator;
@@ -40,6 +44,7 @@ pub(crate) struct AppMediaStore {
     use_base64_for_model_images: bool,
     resource_token_service: Arc<ResourceTokenService>,
     media_objects: Arc<MediaObjectStore>,
+    cleanup_jobs: Arc<CleanupJobStore>,
 }
 
 impl AppMediaStore {
@@ -50,6 +55,7 @@ impl AppMediaStore {
         use_base64_for_model_images: bool,
         resource_token_service: Arc<ResourceTokenService>,
         media_objects: Arc<MediaObjectStore>,
+        cleanup_jobs: Arc<CleanupJobStore>,
     ) -> Self {
         Self {
             inner,
@@ -58,6 +64,7 @@ impl AppMediaStore {
             use_base64_for_model_images,
             resource_token_service,
             media_objects,
+            cleanup_jobs,
         }
     }
 
@@ -72,6 +79,7 @@ impl AppMediaStore {
         content_type: &str,
         owner_user_id: &str,
         session_id: Option<&str>,
+        turn_id: Option<&str>,
     ) -> Result<StoredMedia, ChatServiceError> {
         let stored = self
             .inner
@@ -83,6 +91,7 @@ impl AppMediaStore {
                 object_key: stored.key.clone(),
                 user_id: owner_user_id.to_string(),
                 session_id: session_id.map(str::to_string),
+                turn_id: turn_id.map(str::to_string),
             })
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
@@ -102,6 +111,32 @@ impl AppMediaStore {
             .get_media_object(key)
             .await?
             .map(|media| media.user_id))
+    }
+
+    pub async fn delete_session_media(
+        &self,
+        user_id: &str,
+        session_id: &str,
+    ) -> anyhow::Result<()> {
+        let keys = self
+            .media_objects
+            .list_media_object_keys_for_session(user_id, session_id)
+            .await?;
+
+        self.cleanup_jobs
+            .enqueue_delete_objects(user_id, keys.as_slice())
+            .await
+    }
+
+    pub async fn assign_session_to_existing_objects(
+        &self,
+        user_id: &str,
+        session_id: &str,
+        object_keys: &[String],
+    ) -> anyhow::Result<()> {
+        self.media_objects
+            .assign_session_to_objects(user_id, session_id, object_keys)
+            .await
     }
 
     pub fn browser_media_url(&self, key: &str) -> String {
@@ -155,11 +190,12 @@ impl MediaStore for AppMediaStore {
         content_type: &'a str,
         owner_user_id: &'a str,
         session_id: Option<&'a str>,
+        turn_id: Option<&'a str>,
     ) -> core::pin::Pin<
         Box<dyn core::future::Future<Output = Result<StoredMedia, ChatServiceError>> + Send + 'a>,
     > {
         Box::pin(async move {
-            self.put_owned_bytes(key, bytes, content_type, owner_user_id, session_id)
+            self.put_owned_bytes(key, bytes, content_type, owner_user_id, session_id, turn_id)
                 .await
         })
     }
@@ -186,6 +222,193 @@ impl MediaStore for AppMediaStore {
                 size_bytes: item.size_bytes,
             }))
         })
+    }
+}
+
+impl SessionMediaManagerPort for AppMediaStore {
+    fn delete_session_media<'a>(
+        &'a self,
+        user_id: &'a str,
+        session_id: &'a str,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>
+    {
+        Box::pin(
+            async move { AppMediaStore::delete_session_media(self, user_id, session_id).await },
+        )
+    }
+}
+
+#[derive(Clone)]
+struct AppCleanupQueue {
+    object_store: DynObjectStore,
+    jobs: Arc<CleanupJobStore>,
+}
+
+impl AppCleanupQueue {
+    fn new(object_store: DynObjectStore, jobs: Arc<CleanupJobStore>) -> Self {
+        Self { object_store, jobs }
+    }
+
+    fn spawn_worker(&self) {
+        let object_store = self.object_store.clone();
+        let jobs = self.jobs.clone();
+        tokio::spawn(async move {
+            loop {
+                match jobs.claim_pending_jobs(CLEANUP_JOB_BATCH_SIZE).await {
+                    Ok(pending_jobs) if pending_jobs.is_empty() => {
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    }
+                    Ok(pending_jobs) => {
+                        for job in pending_jobs {
+                            process_cleanup_job(jobs.clone(), object_store.clone(), job).await;
+                        }
+                    }
+                    Err(error) => {
+                        warn!(error = %error, "failed to claim cleanup jobs");
+                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    }
+                }
+            }
+        });
+    }
+}
+
+#[derive(Clone)]
+struct AppTurnRetentionManager {
+    chat_store: Arc<ChatStore>,
+    media_store: Arc<AppMediaStore>,
+}
+
+impl AppTurnRetentionManager {
+    fn new(chat_store: Arc<ChatStore>, media_store: Arc<AppMediaStore>) -> Self {
+        Self {
+            chat_store,
+            media_store,
+        }
+    }
+
+    async fn delete_media_for_turns(
+        &self,
+        user_id: &str,
+        turns: &[PersistedTurnRef],
+    ) -> anyhow::Result<()> {
+        if turns.is_empty() {
+            return Ok(());
+        }
+
+        let turn_ids = turns.iter().map(|turn| turn.id.clone()).collect::<Vec<_>>();
+        let keys = self
+            .media_store
+            .media_objects
+            .list_media_object_keys_for_turns(user_id, turn_ids.as_slice())
+            .await?;
+        self.media_store
+            .cleanup_jobs
+            .enqueue_delete_objects(user_id, keys.as_slice())
+            .await
+    }
+}
+
+impl UserTurnRetentionPort for AppTurnRetentionManager {
+    fn enforce_user_turn_limit<'a>(
+        &'a self,
+        user_id: &'a str,
+        max_turns: usize,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            let stale_turns = self
+                .chat_store
+                .list_stale_turns_for_user(user_id, max_turns)
+                .await?;
+
+            if stale_turns.is_empty() {
+                return Ok(());
+            }
+
+            self.delete_media_for_turns(user_id, stale_turns.as_slice())
+                .await?;
+
+            let turn_ids = stale_turns
+                .into_iter()
+                .map(|turn| turn.id)
+                .collect::<Vec<_>>();
+
+            self.chat_store
+                .delete_turns_for_user(user_id, turn_ids.as_slice())
+                .await
+        })
+    }
+}
+
+#[derive(Clone)]
+struct AppSessionRetentionManager {
+    chat_store: Arc<ChatStore>,
+    media_store: Arc<AppMediaStore>,
+}
+
+impl AppSessionRetentionManager {
+    fn new(chat_store: Arc<ChatStore>, media_store: Arc<AppMediaStore>) -> Self {
+        Self {
+            chat_store,
+            media_store,
+        }
+    }
+}
+
+impl UserSessionRetentionPort for AppSessionRetentionManager {
+    fn enforce_user_session_limit<'a>(
+        &'a self,
+        user_id: &'a str,
+        max_sessions: usize,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = anyhow::Result<()>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            let stale_session_ids = self
+                .chat_store
+                .list_stale_sessions_for_user(user_id, max_sessions)
+                .await?;
+
+            if stale_session_ids.is_empty() {
+                return Ok(());
+            }
+
+            for session_id in &stale_session_ids {
+                self.media_store
+                    .delete_session_media(user_id, session_id.as_str())
+                    .await?;
+            }
+
+            self.chat_store
+                .delete_sessions_for_user(user_id, stale_session_ids.as_slice())
+                .await
+        })
+    }
+}
+
+async fn process_cleanup_job(
+    jobs: Arc<CleanupJobStore>,
+    object_store: DynObjectStore,
+    job: PersistedCleanupJob,
+) {
+    match object_store.delete_object(job.object_key.as_str()).await {
+        Ok(_) => {
+            if let Err(error) = jobs.mark_job_succeeded(job.id.as_str()).await {
+                warn!(job_id = %job.id, error = %error, "failed to finalize cleanup job");
+            }
+        }
+        Err(error) => {
+            let message = error.to_string();
+            warn!(
+                job_id = %job.id,
+                object_key = %job.object_key,
+                error = %message,
+                "cleanup job failed"
+            );
+            if let Err(mark_error) = jobs.mark_job_failed(&job, message.as_str()).await {
+                warn!(job_id = %job.id, error = %mark_error, "failed to reschedule cleanup job");
+            }
+        }
     }
 }
 
@@ -260,11 +483,14 @@ impl AppState {
             config.provider_secret_key.as_str(),
         ));
         let chat_store = Arc::new(ChatStore::new(pool.clone()));
-        let media_object_store = Arc::new(MediaObjectStore::new(pool));
+        let media_object_store = Arc::new(MediaObjectStore::new(pool.clone()));
+        let cleanup_job_store = Arc::new(CleanupJobStore::new(pool));
         let resource_token_service =
             Arc::new(ResourceTokenService::new(config.auth_secret_key.as_str()));
         let storage_config = build_storage_config(config);
         let object_store = build_object_store(&storage_config).await?;
+        let cleanup_queue = AppCleanupQueue::new(object_store.clone(), cleanup_job_store.clone());
+        cleanup_queue.spawn_worker();
         let public_base_url = config
             .public_base_url
             .clone()
@@ -276,6 +502,7 @@ impl AppState {
             config.llm_vision_image_use_base64,
             resource_token_service,
             media_object_store,
+            cleanup_job_store,
         ));
         let session_store = Arc::new(InMemorySessionStore::new());
         let active_turns = Arc::new(ActiveTurnRegistry::new());
@@ -319,10 +546,20 @@ impl AppState {
             tool_access_service.as_ref().clone(),
             media_store.clone(),
         );
+        let turn_retention = Arc::new(AppTurnRetentionManager::new(
+            chat_store.clone(),
+            media_store.clone(),
+        ));
+        let session_retention = Arc::new(AppSessionRetentionManager::new(
+            chat_store.clone(),
+            media_store.clone(),
+        ));
         let runtime = Arc::new(OpenChatTurnExecutor::new(
             chat_store.clone(),
             provider_runtime,
             tool_executor,
+            turn_retention,
+            session_retention,
         ));
         let catalog_service = Arc::new(CatalogService::new(models, tools));
         let turn_builder = Arc::new(CatalogTurnBuilder::new(catalog_service.as_ref().clone()));
@@ -330,6 +567,7 @@ impl AppState {
             session_store,
             active_turns,
             chat_store,
+            media_store.clone(),
             turn_builder,
             runtime,
         ));

@@ -35,6 +35,8 @@ pub trait ObjectStore: Send + Sync {
     ) -> Result<StoredObject>;
 
     async fn get_bytes(&self, key: &str) -> Result<Option<RetrievedObject>>;
+
+    async fn delete_object(&self, key: &str) -> Result<bool>;
 }
 
 pub type DynObjectStore = Arc<dyn ObjectStore>;

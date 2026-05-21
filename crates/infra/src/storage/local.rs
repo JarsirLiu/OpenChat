@@ -87,6 +87,16 @@ impl ObjectStore for LocalObjectStore {
             bytes,
         }))
     }
+
+    async fn delete_object(&self, key: &str) -> Result<bool> {
+        let path = self.resolve_path(key);
+        match fs::remove_file(&path).await {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error)
+                .with_context(|| format!("failed to delete local media file {}", path.display())),
+        }
+    }
 }
 
 fn normalize_public_base_url(value: String) -> String {
