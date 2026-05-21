@@ -54,7 +54,7 @@ export function AssistantActionsBar({ message }: AssistantActionsBarProps) {
   }
 
   return (
-    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+    <div className="flex items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100">
       <ActionBtn onClick={() => void copyMessage()} disabled={!hasText} label="Copy message">
         {copied
           ? <Check className="h-3.5 w-3.5" strokeWidth={2} />
@@ -73,5 +73,4 @@ export function AssistantActionsBar({ message }: AssistantActionsBarProps) {
     </div>
   )
 }
-
 

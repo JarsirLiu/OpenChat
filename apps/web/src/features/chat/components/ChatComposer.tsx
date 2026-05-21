@@ -145,6 +145,10 @@ export function ChatComposer({
     () => models.find((model) => model.key === selectedModelKey) ?? null,
     [models, selectedModelKey],
   )
+  const selectedImageTool = useMemo(
+    () => imageTools.find((tool) => tool.key === selectedImageToolKey) ?? null,
+    [imageTools, selectedImageToolKey],
+  )
   const selectedModelAvailable = selectedModel?.available !== false
   const selectedModelSupportsImageInputs =
     selectedModel?.inputModalities?.some((modality) => {
@@ -238,8 +242,8 @@ export function ChatComposer({
           className="min-h-[56px] max-h-[35vh] w-full resize-none bg-transparent px-4 pb-2 pt-4 text-[15px] leading-[1.75] text-gray-800 outline-none placeholder-gray-400 dark:text-gray-100 dark:placeholder-gray-500 sm:text-[14px]"
         />
 
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-3 pt-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-1">
+        <div className="flex flex-nowrap items-center justify-between gap-2 px-3 pb-3 pt-1">
+          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-hidden sm:overflow-visible">
             <input
               ref={fileInputRef}
               type="file"
@@ -287,8 +291,22 @@ export function ChatComposer({
                 )}
                 aria-label="Image tools"
               >
-                <ImagePlus className="h-4 w-4" strokeWidth={2} />
-                <span className="max-w-[110px] truncate sm:max-w-[132px]">
+                {selectedImageToolKey ? (
+                  <ModelAvatar
+                    model={
+                      selectedImageTool?.iconKey ??
+                      resolveModelIconKey(
+                        selectedImageToolKey,
+                        selectedImageTool?.provider ?? 'openai',
+                        selectedImageToolLabel,
+                      )
+                    }
+                    size={16}
+                  />
+                ) : (
+                  <ImagePlus className="h-4 w-4" strokeWidth={2} />
+                )}
+                <span className="max-w-[32vw] truncate sm:max-w-[132px]">
                   {selectedImageToolKey ? selectedImageToolLabel : '图片工具'}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={2} />
@@ -394,14 +412,14 @@ export function ChatComposer({
             </div>
           </div>
 
-          <div className="flex min-w-0 items-center gap-2 self-end sm:self-auto">
+          <div className="flex min-w-0 flex-shrink-0 items-center gap-2 self-auto">
             <div className="relative" ref={modelPanelRef}>
               <button
                 type="button"
                 onClick={() => setModelMenuOpen((open) => !open)}
                 disabled={modelLoading || models.length === 0}
                 className={clsx(
-                  'flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors disabled:opacity-50',
+                  'flex h-8 min-w-0 max-w-[34vw] items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors disabled:opacity-50 sm:max-w-none',
                   selectedModelAvailable
                     ? 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800'
                     : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-900/40',
@@ -416,7 +434,7 @@ export function ChatComposer({
                   model={resolveModelIconKey(selectedModelKey, selectedModelProvider, selectedModelLabel)}
                   size={20}
                 />
-                <span className="max-w-[96px] truncate sm:max-w-[160px]">{selectedModelLabel}</span>
+                <span className="min-w-0 max-w-[20vw] truncate sm:max-w-[160px]">{selectedModelLabel}</span>
                 <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" strokeWidth={2} />
               </button>
 
