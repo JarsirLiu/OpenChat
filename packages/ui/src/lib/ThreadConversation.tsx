@@ -89,12 +89,10 @@ const parseTimestamp = (value?: string) => {
 
 const IMAGE_GEN_LOADING_MESSAGES = ['正在构思作图', '正在尝试作图', '图片快做好了'] as const
 
-const sanitizeDownloadName = (value: string) =>
-  value
-    .trim()
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
-    .replace(/\s+/g, '-')
-    .slice(0, 60) || 'openchat-image'
+const createDownloadBaseName = (itemId: string) => {
+  const normalizedId = itemId.replace(/[^a-zA-Z0-9_-]/g, '').slice(-12)
+  return normalizedId ? `openchat-image-${normalizedId}` : `openchat-image-${Date.now()}`
+}
 
 const downloadImageAsset = async (url: string, filename: string) => {
   try {
@@ -146,7 +144,7 @@ const ImageGenerationBlock = ({
   const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null)
   const startedAtMs = parseTimestamp(item.createdAt)
   const completedAtMs = parseTimestamp(item.updatedAt)
-  const downloadBaseName = sanitizeDownloadName(item.revisedPrompt || item.prompt || 'openchat-image')
+  const downloadBaseName = createDownloadBaseName(item.id)
   const durationText = useMemo(() => {
     if (!startedAtMs) {
       return null

@@ -41,7 +41,7 @@ export function ChatWorkspaceMobile({
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-white font-sans dark:bg-[#121212]">
+    <div className="flex h-[100dvh] overflow-hidden overscroll-none bg-white font-sans dark:bg-[#121212]">
       {sidebarOpen ? (
         <>
           <div
@@ -73,7 +73,7 @@ export function ChatWorkspaceMobile({
         </>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col bg-white dark:bg-[#121212]">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden overscroll-none bg-white dark:bg-[#121212]">
         <ChatHeader
           title={title}
           onDelete={onDeleteCurrentSession}

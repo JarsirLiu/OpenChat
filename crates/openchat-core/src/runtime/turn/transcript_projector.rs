@@ -49,6 +49,7 @@ impl TranscriptProjector {
         prompt: &str,
         user_content: &Value,
     ) -> Result<()> {
+        let persisted_at = now_millis().to_string();
         self.upsert_thread_item(PersistedThreadItem {
             id: user_item_id.to_string(),
             user_id: context.user_id.to_string(),
@@ -69,6 +70,8 @@ impl TranscriptProjector {
             source_tool_call_id: None,
             source_tool_name: None,
             images_json: None,
+            created_at: persisted_at.clone(),
+            updated_at: persisted_at,
         })
         .await
         .context("failed to persist user transcript item")?;
@@ -100,6 +103,7 @@ impl TranscriptProjector {
         context: ProjectionContext<'_>,
         reasoning_item_id: &str,
     ) -> Result<()> {
+        let persisted_at = now_millis().to_string();
         self.upsert_thread_item(PersistedThreadItem {
             id: reasoning_item_id.to_string(),
             user_id: context.user_id.to_string(),
@@ -120,6 +124,8 @@ impl TranscriptProjector {
             source_tool_call_id: None,
             source_tool_name: None,
             images_json: None,
+            created_at: persisted_at.clone(),
+            updated_at: persisted_at,
         })
         .await
         .context("failed to persist reasoning start item")?;
@@ -151,6 +157,7 @@ impl TranscriptProjector {
         delta: &str,
         reasoning_text: &str,
     ) -> Result<()> {
+        let persisted_at = now_millis().to_string();
         self.upsert_thread_item(PersistedThreadItem {
             id: reasoning_item_id.to_string(),
             user_id: context.user_id.to_string(),
@@ -171,6 +178,8 @@ impl TranscriptProjector {
             source_tool_call_id: None,
             source_tool_name: None,
             images_json: None,
+            created_at: persisted_at.clone(),
+            updated_at: persisted_at,
         })
         .await
         .context("failed to persist reasoning delta item")?;
@@ -196,6 +205,7 @@ impl TranscriptProjector {
         reasoning_item_id: &str,
         reasoning_text: &str,
     ) -> Result<()> {
+        let persisted_at = now_millis().to_string();
         self.upsert_thread_item(PersistedThreadItem {
             id: reasoning_item_id.to_string(),
             user_id: context.user_id.to_string(),
@@ -216,6 +226,8 @@ impl TranscriptProjector {
             source_tool_call_id: None,
             source_tool_name: None,
             images_json: None,
+            created_at: persisted_at.clone(),
+            updated_at: persisted_at,
         })
         .await
         .context("failed to persist reasoning completion item")?;
@@ -245,6 +257,7 @@ impl TranscriptProjector {
         context: ProjectionContext<'_>,
         assistant_item_id: &str,
     ) -> Result<()> {
+        let persisted_at = now_millis().to_string();
         self.upsert_thread_item(PersistedThreadItem {
             id: assistant_item_id.to_string(),
             user_id: context.user_id.to_string(),
@@ -265,6 +278,8 @@ impl TranscriptProjector {
             source_tool_call_id: None,
             source_tool_name: None,
             images_json: None,
+            created_at: persisted_at.clone(),
+            updated_at: persisted_at,
         })
         .await
         .context("failed to persist assistant start item")?;
@@ -298,6 +313,7 @@ impl TranscriptProjector {
         delta: &str,
         assistant_text: &str,
     ) -> Result<()> {
+        let persisted_at = now_millis().to_string();
         self.upsert_thread_item(PersistedThreadItem {
             id: assistant_item_id.to_string(),
             user_id: context.user_id.to_string(),
@@ -318,6 +334,8 @@ impl TranscriptProjector {
             source_tool_call_id: None,
             source_tool_name: None,
             images_json: None,
+            created_at: persisted_at.clone(),
+            updated_at: persisted_at,
         })
         .await
         .context("failed to persist assistant delta item")?;
@@ -382,6 +400,7 @@ impl TranscriptProjector {
             .as_ref()
             .and_then(|value| value.get("n"))
             .and_then(|value| value.as_i64());
+        let persisted_at = now_millis().to_string();
 
         self.upsert_thread_item(PersistedThreadItem {
             id: format!("image:{tool_call_id}"),
@@ -403,6 +422,8 @@ impl TranscriptProjector {
             source_tool_call_id: Some(tool_call_id.to_string()),
             source_tool_name: Some(tool_name.to_string()),
             images_json: Some("[]".into()),
+            created_at: persisted_at.clone(),
+            updated_at: persisted_at,
         })
         .await
         .context("failed to persist image generation start item")?;
@@ -495,6 +516,7 @@ impl TranscriptProjector {
                     })
                 })
                 .collect::<Vec<_>>();
+            let persisted_at = now_millis().to_string();
 
             self.upsert_thread_item(PersistedThreadItem {
                 id: format!("image:{}", completed.tool_call_id),
@@ -520,6 +542,8 @@ impl TranscriptProjector {
                 source_tool_call_id: Some(completed.tool_call_id.clone()),
                 source_tool_name: Some(completed.tool_name.clone()),
                 images_json: Some(serde_json::Value::Array(images).to_string()),
+                created_at: persisted_at.clone(),
+                updated_at: persisted_at,
             })
             .await
             .context("failed to persist image generation completion item")?;

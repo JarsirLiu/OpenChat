@@ -134,6 +134,7 @@ where
             tool_call_coordinator,
             transcript_projector.clone(),
         );
+        session_title_generator.spawn_generate(plan.clone(), session_runtime.clone());
 
         let loop_result = turn_loop
             .run(
@@ -210,7 +211,6 @@ where
         )
         .await;
         spawn_retention_cleanup(turn_retention, session_retention, plan.user_id.clone());
-        session_title_generator.spawn_generate(plan, session_runtime);
     }
 }
 

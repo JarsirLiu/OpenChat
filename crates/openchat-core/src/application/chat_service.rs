@@ -260,18 +260,23 @@ impl ChatService {
             )
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
+        let turn_ids = turn_page
+            .turns
+            .iter()
+            .map(|turn| turn.id.clone())
+            .collect::<Vec<_>>();
         let thread_items = self
             .chat_store
-            .list_session_thread_items_for_turns(user_id, session_id, turn_page.turn_ids.as_slice())
+            .list_session_thread_items_for_turns(user_id, session_id, turn_ids.as_slice())
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
         let turns = turn_page
-            .turn_ids
+            .turns
             .iter()
-            .map(|turn_id| {
+            .map(|turn| {
                 let items = thread_items
                     .iter()
-                    .filter(|item| item.turn_id == *turn_id)
+                    .filter(|item| item.turn_id == turn.id)
                     .map(|item| ThreadItemSnapshotDto {
                         id: item.id.clone(),
                         item_type: item.item_type.clone(),
@@ -279,8 +284,8 @@ impl ChatService {
                         turn_id: item.turn_id.clone(),
                         status: item.status.clone(),
                         seq: item.seq.unwrap_or_default(),
-                        created_at: None,
-                        updated_at: None,
+                        created_at: Some(item.created_at.clone()),
+                        updated_at: Some(item.updated_at.clone()),
                         parent_id: item.parent_id.clone(),
                         content: item.content_json.as_deref().and_then(|value| {
                             serde_json::from_str::<serde_json::Value>(value).ok()
@@ -318,12 +323,17 @@ impl ChatService {
                     .collect::<Vec<_>>();
 
                 TurnSnapshotDto {
-                    id: turn_id.clone(),
+                    id: turn.id.clone(),
                     session_id: session_id.to_string(),
-                    status: "completed".to_string(),
-                    started_at: None,
-                    completed_at: None,
-                    terminal_reason: None,
+                    status: turn.status.clone(),
+                    started_at: Some(turn.started_at.clone()),
+                    completed_at: turn.completed_at.clone(),
+                    terminal_reason: turn.terminal_reason.as_ref().map(|reason| {
+                        crate::protocol::TerminalReasonDto {
+                            code: reason.code.clone(),
+                            message: reason.message.clone(),
+                        }
+                    }),
                     items,
                 }
             })
@@ -353,9 +363,14 @@ impl ChatService {
             .list_session_turns_page(user_id, session_id, None, session_history_window_size())
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
+        let turn_ids = turn_page
+            .turns
+            .iter()
+            .map(|turn| turn.id.clone())
+            .collect::<Vec<_>>();
         let thread_items = self
             .chat_store
-            .list_session_thread_items_for_turns(user_id, session_id, turn_page.turn_ids.as_slice())
+            .list_session_thread_items_for_turns(user_id, session_id, turn_ids.as_slice())
             .await
             .map_err(|error| ChatServiceError::new(500, error.to_string()))?;
         let history = normalize_thread_item_history(thread_items);

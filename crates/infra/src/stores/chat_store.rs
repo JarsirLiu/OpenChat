@@ -58,6 +58,8 @@ pub struct PersistedThreadItem {
     pub source_tool_call_id: Option<String>,
     pub source_tool_name: Option<String>,
     pub images_json: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -81,10 +83,21 @@ struct PersistedThreadItemRow {
     source_tool_call_id: Option<String>,
     source_tool_name: Option<String>,
     images_json: Option<String>,
+    created_at: i64,
+    updated_at: i64,
+}
+
+#[derive(Clone)]
+pub struct PersistedTurn {
+    pub id: String,
+    pub status: String,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub terminal_reason: Option<PersistedTurnTerminalReason>,
 }
 
 pub struct PersistedTurnPage {
-    pub turn_ids: Vec<String>,
+    pub turns: Vec<PersistedTurn>,
     pub has_more: bool,
     pub next_before_turn_id: Option<String>,
 }
@@ -1488,11 +1501,25 @@ impl ChatStore {
     ) -> anyhow::Result<PersistedTurnPage> {
         let fetch_limit = i64::try_from(turn_limit.saturating_add(1)).unwrap_or(i64::MAX);
 
-        let rows: Vec<(String, i64)> = match self.pool.as_ref() {
+        let rows: Vec<(
+            String,
+            String,
+            i64,
+            Option<i64>,
+            Option<String>,
+            Option<String>,
+        )> = match self.pool.as_ref() {
             DatabasePool::Compat(pool) => {
-                sqlx::query_as::<_, (String, i64)>(
+                sqlx::query_as::<_, (
+                    String,
+                    String,
+                    i64,
+                    Option<i64>,
+                    Option<String>,
+                    Option<String>,
+                )>(
                     r#"
-                    SELECT id, started_at
+                    SELECT id, status, started_at, completed_at, terminal_reason_code, terminal_reason_message
                     FROM turns
                     WHERE session_id = ?1
                       AND user_id = ?2
@@ -1523,9 +1550,16 @@ impl ChatStore {
                 .await
             }
             DatabasePool::Postgres(pool) => {
-                sqlx::query_as::<_, (String, i64)>(
+                sqlx::query_as::<_, (
+                    String,
+                    String,
+                    i64,
+                    Option<i64>,
+                    Option<String>,
+                    Option<String>,
+                )>(
                     r#"
-                    SELECT id, started_at
+                    SELECT id, status, started_at, completed_at, terminal_reason_code, terminal_reason_message
                     FROM turns
                     WHERE session_id = $1
                       AND user_id = $2
@@ -1564,15 +1598,33 @@ impl ChatStore {
             kept_rows.truncate(turn_limit);
         }
 
-        let next_before_turn_id = kept_rows.last().map(|(id, _)| id.clone());
-        let turn_ids = kept_rows
+        let next_before_turn_id = kept_rows.last().map(|(id, ..)| id.clone());
+        let turns = kept_rows
             .into_iter()
             .rev()
-            .map(|(id, _)| id)
+            .map(
+                |(
+                    id,
+                    status,
+                    started_at,
+                    completed_at,
+                    terminal_reason_code,
+                    terminal_reason_message,
+                )| PersistedTurn {
+                    id,
+                    status,
+                    started_at: started_at.to_string(),
+                    completed_at: completed_at.map(|value| value.to_string()),
+                    terminal_reason: terminal_reason_code.map(|code| PersistedTurnTerminalReason {
+                        code,
+                        message: terminal_reason_message,
+                    }),
+                },
+            )
             .collect::<Vec<_>>();
 
         Ok(PersistedTurnPage {
-            turn_ids,
+            turns,
             has_more,
             next_before_turn_id,
         })
@@ -1710,7 +1762,7 @@ impl ChatStore {
         let rows = match self.pool.as_ref() {
             DatabasePool::Compat(pool) => {
                 let mut query = QueryBuilder::<sqlx::Postgres>::new(
-                    "SELECT id, user_id, session_id, turn_id, item_type, status, seq, parent_id, content_json, text, prompt, revised_prompt, model, size, quality, count, source_tool_call_id, source_tool_name, images_json FROM thread_items WHERE user_id = ",
+                    "SELECT id, user_id, session_id, turn_id, item_type, status, seq, parent_id, content_json, text, prompt, revised_prompt, model, size, quality, count, source_tool_call_id, source_tool_name, images_json, created_at, updated_at FROM thread_items WHERE user_id = ",
                 );
                 query.push_bind(user_id);
                 query.push(" AND session_id = ");
@@ -1730,7 +1782,7 @@ impl ChatStore {
             }
             DatabasePool::Postgres(pool) => {
                 let mut query = QueryBuilder::<sqlx::Postgres>::new(
-                    "SELECT id, user_id, session_id, turn_id, item_type, status, seq, parent_id, content_json, text, prompt, revised_prompt, model, size, quality, count, source_tool_call_id, source_tool_name, images_json FROM thread_items WHERE user_id = ",
+                    "SELECT id, user_id, session_id, turn_id, item_type, status, seq, parent_id, content_json, text, prompt, revised_prompt, model, size, quality, count, source_tool_call_id, source_tool_name, images_json, created_at, updated_at FROM thread_items WHERE user_id = ",
                 );
                 query.push_bind(user_id);
                 query.push(" AND session_id = ");
@@ -1773,6 +1825,8 @@ impl ChatStore {
                 source_tool_call_id: row.source_tool_call_id,
                 source_tool_name: row.source_tool_name,
                 images_json: row.images_json,
+                created_at: row.created_at.to_string(),
+                updated_at: row.updated_at.to_string(),
             })
             .collect::<Vec<_>>();
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { shouldPreserveDraftHandoffState } from './useChatWorkspace'
+import { API_ERROR_CODES } from '../../lib/apiError'
+import { shouldPreserveDraftHandoffState, toRuntimeRequestError } from './useChatWorkspace'
 
 describe('shouldPreserveDraftHandoffState', () => {
   it('preserves preview/runtime state during draft to accepted session handoff when pending id matches', () => {
@@ -70,5 +71,23 @@ describe('shouldPreserveDraftHandoffState', () => {
         },
       }),
     ).toBe(false)
+  })
+})
+
+describe('toRuntimeRequestError', () => {
+  it('maps terminal stream failures into visible request errors', () => {
+    const error = toRuntimeRequestError({
+      code: API_ERROR_CODES.providerAuthenticationFailed.code,
+      message: 'Provider `openai` authentication failed. Please update the API key and try again.',
+    })
+
+    expect(error).not.toBeNull()
+    expect(error?.code).toBe(API_ERROR_CODES.providerAuthenticationFailed.code)
+    expect(error?.category).toBe(API_ERROR_CODES.providerAuthenticationFailed.category)
+    expect(error?.message).toContain('authentication failed')
+  })
+
+  it('returns null when stream runtime has no error payload', () => {
+    expect(toRuntimeRequestError(null)).toBeNull()
   })
 })

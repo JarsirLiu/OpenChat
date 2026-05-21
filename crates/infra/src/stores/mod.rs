@@ -11,7 +11,7 @@ pub use catalog_store::{
     CatalogConfig, CatalogModelRecord, CatalogProvider, CatalogStore, CatalogToolRecord,
 };
 pub use chat_store::{
-    ChatStore, PersistedSession, PersistedThreadItem, PersistedTurnPage, PersistedTurnRef,
+    ChatStore, PersistedSession, PersistedThreadItem, PersistedTurn, PersistedTurnPage, PersistedTurnRef,
     PersistedTurnTerminalReason,
 };
 pub use cleanup_job_store::{CleanupJobStore, PersistedCleanupJob};

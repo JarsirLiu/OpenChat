@@ -78,7 +78,7 @@ export function ChatWorkspaceMainPane({
     <>
       <div
         ref={onScrollContainerReady}
-        className="relative z-0 min-h-0 flex-1 overflow-y-auto px-3 sm:px-4"
+        className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 sm:px-4"
       >
         <div
           className={`mx-auto flex min-h-full w-full flex-col py-4 sm:py-6 ${
@@ -108,7 +108,7 @@ export function ChatWorkspaceMainPane({
         </div>
       </div>
 
-      <div className="relative z-20 shrink-0 border-t border-gray-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3 backdrop-blur-sm dark:border-gray-800 dark:bg-[#121212]/95 sm:px-4 sm:pt-4">
+      <div className="relative z-20 shrink-0 overscroll-none border-t border-gray-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3 backdrop-blur-sm dark:border-gray-800 dark:bg-[#121212]/95 sm:px-4 sm:pt-4">
         <div className={`mx-auto ${desktop ? 'lg:max-w-[800px]' : 'max-w-[800px]'}`}>
           <ChatComposer
             value={input}

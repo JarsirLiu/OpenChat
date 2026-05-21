@@ -107,6 +107,31 @@ export const shouldPreserveDraftHandoffState = ({
     (runtimeState.isStreaming &&
       runtimeState.turns.some((turn) => turn.sessionId === nextSessionId)))
 
+export const toRuntimeRequestError = (
+  error:
+    | {
+        code?: string | null
+        message: string
+      }
+    | null
+    | undefined,
+) => {
+  if (!error?.message) {
+    return null
+  }
+
+  return new ApiError(error.message, {
+    status: 502,
+    code: error.code ?? null,
+    category:
+      Object.values(API_ERROR_CODES).find((candidate) => candidate.code === error.code)?.category ??
+      null,
+    retryable:
+      Object.values(API_ERROR_CODES).find((candidate) => candidate.code === error.code)?.retryable ??
+      false,
+  })
+}
+
 export function useChatWorkspace({
   currentUser,
   onUnauthorized,
@@ -130,6 +155,15 @@ export function useChatWorkspace({
   useEffect(() => {
     runtimeV2StateRef.current = runtimeV2State
   }, [runtimeV2State])
+
+  useEffect(() => {
+    const nextError = toRuntimeRequestError(runtimeV2State.error)
+    if (!nextError) {
+      return
+    }
+
+    setRequestErrorState(nextError)
+  }, [runtimeV2State.error])
 
   useEffect(() => {
     const previousSessionId = previousSessionIdRef.current
