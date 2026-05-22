@@ -1,25 +1,22 @@
-export const MAX_IMAGE_SIZE = 1920
-export const MAX_IMAGE_BYTES = 3 * 1024 * 1024
+export const MAX_IMAGE_SIZE = 1600
+export const MAX_IMAGE_BYTES = 1536 * 1024
 
 const COMPRESSIBLE_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
-const JPEG_QUALITY = 0.85
+const JPEG_QUALITY = 0.82
+const WEBP_QUALITY = 0.82
 const MIN_IMAGE_SIZE = 100
 const DOWNSCALE_FACTOR = 0.8
 
-const dataUrlToFile = (dataUrl: string, name: string) => {
-  const [header, payload] = dataUrl.split(',')
-  const mimeType = header?.split(':')[1]?.split(';')[0] || 'image/png'
-  const binary = window.atob(payload || '')
-  const bytes = new Uint8Array(binary.length)
+const getOutputType = (file: File) =>
+  file.type === 'image/webp' ? 'image/webp' : 'image/jpeg'
 
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index)
-  }
-
-  return new File([bytes], name, { type: mimeType })
+const getOutputName = (file: File, type: string) => {
+  const extension = type === 'image/webp' ? 'webp' : 'jpg'
+  const baseName = file.name.replace(/\.[^.]+$/, '')
+  return `${baseName || 'image'}.${extension}`
 }
 
-const renderCompressedImage = ({
+const renderCompressedImage = async ({
   image,
   maxSize,
   type,
@@ -51,11 +48,10 @@ const renderCompressedImage = ({
   canvas.height = height
   context.drawImage(image, 0, 0, image.width, image.height, 0, 0, width, height)
 
-  if (type === 'image/jpeg') {
-    return canvas.toDataURL('image/jpeg', JPEG_QUALITY)
-  }
-
-  return canvas.toDataURL('image/png')
+  const quality = type === 'image/webp' ? WEBP_QUALITY : JPEG_QUALITY
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, type, quality)
+  })
 }
 
 const shouldSkipCompression = (file: File, image: HTMLImageElement) =>
@@ -77,7 +73,7 @@ export const compressImageFile = async (file: File) =>
       URL.revokeObjectURL(objectUrl)
     }
 
-    image.addEventListener('load', () => {
+    image.addEventListener('load', async () => {
       try {
         if (shouldSkipCompression(file, image)) {
           resolve(file)
@@ -85,21 +81,22 @@ export const compressImageFile = async (file: File) =>
         }
 
         let nextMaxSize = MAX_IMAGE_SIZE
-        let current = file
+        let current: File = file
+        const outputType = getOutputType(file)
 
         while (nextMaxSize >= MIN_IMAGE_SIZE) {
-          const dataUrl = renderCompressedImage({
+          const blob = await renderCompressedImage({
             image,
             maxSize: nextMaxSize,
-            type: file.type,
+            type: outputType,
           })
 
-          if (!dataUrl) {
+          if (!blob) {
             resolve(file)
             return
           }
 
-          current = dataUrlToFile(dataUrl, file.name)
+          current = new File([blob], getOutputName(file, outputType), { type: outputType })
           if (current.size <= MAX_IMAGE_BYTES) {
             resolve(current)
             return

@@ -13,8 +13,8 @@ use crate::{
 };
 
 const MAX_MODEL_STEPS_PER_TURN: usize = 8;
-const MODEL_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const MODEL_STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(15);
+const MODEL_CONNECT_TIMEOUT: Duration = Duration::from_secs(45);
+const MODEL_STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub(crate) struct TurnLoopRunResult {
     pub reasoning_text: String,

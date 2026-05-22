@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ChatRuntimeV2State } from '@openchat/chat-core'
-import type { ChatMessage, MessageContentPart, ThreadItem } from '@openchat/protocol'
-import { Bot, ChevronDown, Download, ImageIcon, Sparkles, Loader2 } from 'lucide-react'
+import type { ChatMessage, MessageContentPart, ThreadItem, ThreadTurn } from '@openchat/protocol'
+import { Bot, ChevronDown, Download, ImageIcon, Sparkles, Loader2, AlertCircle } from 'lucide-react'
 import { AssistantActionsBar } from './chat/AssistantActionsBar'
 import { AssistantFrame } from './chat/AssistantFrame'
 import { ContentLoading } from './chat/parts/ContentLoading'
@@ -330,6 +330,15 @@ const renderAssistantItem = (item: ThreadItem) => {
   return null
 }
 
+const getTurnFailureMessage = (turn: ThreadTurn) => {
+  if (turn.status !== 'failed' && turn.status !== 'interrupted') {
+    return null
+  }
+
+  return turn.terminalReason?.message?.trim() ||
+    (turn.status === 'interrupted' ? '响应已中止' : '响应失败，请重试')
+}
+
 export function ThreadConversation({
   state,
   optimisticUserPreviews = {},
@@ -355,6 +364,7 @@ export function ThreadConversation({
             item.status === 'in_progress' &&
             (item.type === 'agentMessage' || item.type === 'reasoning'),
         )
+        const turnFailureMessage = getTurnFailureMessage(turn)
 
         return (
           <div key={turn.id} className="flex w-full flex-col">
@@ -405,7 +415,7 @@ export function ThreadConversation({
                 </article>
               )
             })}
-            {assistantItems.length > 0 || turn.status === 'running' ? (
+            {assistantItems.length > 0 || turn.status === 'running' || turnFailureMessage ? (
               <AssistantFrame
                 footer={
                   latestAgentMessage ? (
@@ -421,6 +431,12 @@ export function ThreadConversation({
                   <ContentLoading label="准备响应中" startedAt={turn.startedAt ?? undefined} />
                 ) : null}
                 {assistantItems.map((item) => renderAssistantItem(item))}
+                {turnFailureMessage ? (
+                  <div className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[13px] leading-relaxed text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{turnFailureMessage}</span>
+                  </div>
+                ) : null}
               </AssistantFrame>
             ) : null}
           </div>

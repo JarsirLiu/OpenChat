@@ -22,6 +22,7 @@ interface SessionThreadItemPayload {
   sourceToolName?: string | null
   images?: Array<{
     url?: string
+    objectKey?: string | null
     mimeType?: string
     sizeBytes?: number
   }>
@@ -33,6 +34,7 @@ interface SessionTurnPayload {
   status?: string
   startedAt?: string | null
   completedAt?: string | null
+  terminalReason?: ThreadTurn['terminalReason']
   items?: SessionThreadItemPayload[]
 }
 
@@ -114,7 +116,12 @@ const normalizeItem = (item: SessionThreadItemPayload): ThreadItem | null => {
       images: Array.isArray(item.images)
         ? item.images.flatMap((image) =>
             image?.url && image?.mimeType
-              ? [{ url: image.url, mimeType: image.mimeType, sizeBytes: image.sizeBytes }]
+              ? [{
+                  url: image.url,
+                  objectKey: image.objectKey ?? null,
+                  mimeType: image.mimeType,
+                  sizeBytes: image.sizeBytes,
+                }]
               : [],
           )
         : [],
@@ -156,7 +163,7 @@ export const normalizeSessionTurns = (value: SessionTurnPayload[] | undefined): 
                   .filter((item): item is ThreadItem => Boolean(item))
                   .sort((left, right) => left.seq - right.seq)
               : [],
-            terminalReason: null,
+            terminalReason: turn.terminalReason ?? null,
           },
         ]
       })

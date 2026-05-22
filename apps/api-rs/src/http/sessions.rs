@@ -17,6 +17,7 @@ pub struct SessionListItemDto {
 #[serde(rename_all = "camelCase")]
 pub struct SessionThreadItemImageDto {
     pub url: String,
+    pub object_key: Option<String>,
     pub mime_type: String,
     pub size_bytes: Option<u64>,
 }
@@ -55,6 +56,7 @@ pub struct SessionTurnDto {
     pub status: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
+    pub terminal_reason: Option<openchat_core::protocol::TerminalReasonDto>,
     pub items: Vec<SessionThreadItemDto>,
 }
 

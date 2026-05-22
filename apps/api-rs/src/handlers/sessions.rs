@@ -124,6 +124,7 @@ pub async fn get_session(
                         completed_at: turn
                             .completed_at
                             .map(|value| format_millis_timestamp(value.as_str())),
+                        terminal_reason: turn.terminal_reason,
                         items: turn
                             .items
                             .into_iter()
@@ -156,6 +157,7 @@ pub async fn get_session(
                                     .into_iter()
                                     .map(|image| SessionThreadItemImageDto {
                                         url: image.url,
+                                        object_key: image.object_key,
                                         mime_type: image.mime_type,
                                         size_bytes: image.size_bytes,
                                     })

@@ -312,6 +312,10 @@ impl ChatService {
                                     entry.get("mimeType").and_then(|value| value.as_str())?;
                                 Some(GeneratedImageAssetDto {
                                     url: url.to_string(),
+                                    object_key: entry
+                                        .get("objectKey")
+                                        .and_then(|value| value.as_str())
+                                        .map(ToString::to_string),
                                     mime_type: mime_type.to_string(),
                                     size_bytes: entry
                                         .get("sizeBytes")

@@ -65,6 +65,7 @@ pub struct ToolCallItemDto {
 #[serde(rename_all = "camelCase")]
 pub struct GeneratedImageAssetDto {
     pub url: String,
+    pub object_key: Option<String>,
     pub mime_type: String,
     pub size_bytes: Option<u64>,
 }
