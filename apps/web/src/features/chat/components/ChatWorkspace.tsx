@@ -87,6 +87,8 @@ export function ChatWorkspace({
   })
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const shouldFollowStreamingRef = useRef(true)
+  const lastTurnCountRef = useRef(runtimeV2State.turns.length)
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -136,10 +138,31 @@ export function ChatWorkspace({
   }, [onUnauthorized])
 
   useEffect(() => {
-    if (scrollRef.current && pending) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    const container = scrollRef.current
+    if (!container || !pending || !shouldFollowStreamingRef.current) {
+      return
     }
-  }, [runtimeV2State.turns, pending])
+
+    container.scrollTop = container.scrollHeight
+  }, [runtimeV2State.turns, runtimeV2State.pending, pending])
+
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) {
+      lastTurnCountRef.current = runtimeV2State.turns.length
+      return
+    }
+
+    const hasNewTurn = runtimeV2State.turns.length > lastTurnCountRef.current
+    lastTurnCountRef.current = runtimeV2State.turns.length
+    if (!hasNewTurn || !shouldFollowStreamingRef.current) {
+      return
+    }
+
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight
+    })
+  }, [runtimeV2State.turns.length])
 
   useEffect(() => {
     const container = scrollRef.current
@@ -150,6 +173,10 @@ export function ChatWorkspace({
     let loading = false
 
     const handleScroll = () => {
+      const distanceFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight
+      shouldFollowStreamingRef.current = distanceFromBottom < 160
+
       if (loading || historyLoading || !historyHasMore || container.scrollTop > 80) {
         return
       }

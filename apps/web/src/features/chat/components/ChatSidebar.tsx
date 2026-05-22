@@ -6,6 +6,7 @@ import {
   LogOut,
   MessageSquarePlus,
   Search,
+  X,
   Trash2,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -38,7 +39,33 @@ export function ChatSidebar({
   onLogout: () => void
   onClose?: () => void
 }) {
-  const groupedSessions = useMemo(() => groupSessionsByRelativeTime(sessions), [sessions])
+  const [searchQuery, setSearchQuery] = useState('')
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase()
+  const filteredSessions = useMemo(() => {
+    if (!normalizedSearchQuery) {
+      return sessions
+    }
+
+    return sessions.filter((session) => {
+      const title = session.title?.trim() || ''
+      const statusLabel = getSessionStatusLabel(session)
+      return [
+        title,
+        session.id,
+        session.status,
+        statusLabel,
+      ].some((value) => value.toLowerCase().includes(normalizedSearchQuery))
+    })
+  }, [normalizedSearchQuery, sessions])
+  const groupedSessions = useMemo(
+    () => groupSessionsByRelativeTime(filteredSessions),
+    [filteredSessions],
+  )
+  const runningCount = useMemo(
+    () => sessions.filter((session) => isRunningSession(session)).length,
+    [sessions],
+  )
+  const isSearching = normalizedSearchQuery.length > 0
 
   return (
     <aside className="flex h-full w-[260px] max-w-[86vw] flex-shrink-0 flex-col border-r border-gray-100 bg-[#f8f8f8] dark:border-gray-800 dark:bg-[#121212]">
@@ -84,11 +111,30 @@ export function ChatSidebar({
           <input
             type="text"
             placeholder="搜索"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
             className="w-full bg-transparent outline-none placeholder:text-gray-500 text-[14px]"
           />
+          {searchQuery ? (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="-mr-1 rounded p-1 text-gray-400 transition hover:bg-black/10 hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-200"
+              aria-label="清空搜索"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
         </div>
 
         <div className="-mx-1 flex-1 space-y-3 overflow-y-auto px-1">
+          {runningCount > 0 && !isSearching ? (
+            <div className="mx-1 flex items-center gap-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-[12px] font-medium text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+              <span>{runningCount} 个对话正在执行</span>
+            </div>
+          ) : null}
+
           {loading ? (
             <div className="flex items-center gap-2 p-2 text-sm text-gray-500">
               <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -98,7 +144,17 @@ export function ChatSidebar({
 
           {error ? <p className="p-2 text-xs text-red-500">{error}</p> : null}
 
-          {groupedSessions.today.length > 0 && (
+          {isSearching ? (
+            <SearchResultsGroup
+              sessions={filteredSessions}
+              currentSessionId={currentSessionId}
+              onSelect={onSelect}
+              onDelete={onDeleteSession}
+              onClose={onClose}
+            />
+          ) : null}
+
+          {!isSearching && groupedSessions.today.length > 0 && (
             <SessionGroup
               title="今天"
               sessions={groupedSessions.today}
@@ -108,7 +164,7 @@ export function ChatSidebar({
             />
           )}
 
-          {groupedSessions.thisWeek.length > 0 && (
+          {!isSearching && groupedSessions.thisWeek.length > 0 && (
             <SessionGroup
               title="本周"
               sessions={groupedSessions.thisWeek}
@@ -118,7 +174,7 @@ export function ChatSidebar({
             />
           )}
 
-          {groupedSessions.older.length > 0 && (
+          {!isSearching && groupedSessions.older.length > 0 && (
             <SessionGroup
               title="更早"
               sessions={groupedSessions.older}
@@ -127,6 +183,10 @@ export function ChatSidebar({
               onDelete={onDeleteSession}
             />
           )}
+
+          {!loading && !error && sessions.length === 0 ? (
+            <div className="px-3 py-8 text-center text-[13px] text-gray-400">暂无对话</div>
+          ) : null}
         </div>
       </div>
 
@@ -144,6 +204,57 @@ export function ChatSidebar({
         </button>
       </div>
     </aside>
+  )
+}
+
+const isRunningSession = (session: SessionListItem) => session.status === 'running'
+
+const getSessionStatusLabel = (session: SessionListItem) => {
+  if (isRunningSession(session)) return '生成中'
+  if (session.status === 'failed') return '失败'
+  if (session.status === 'interrupted') return '已中止'
+  return ''
+}
+
+function SearchResultsGroup({
+  sessions,
+  currentSessionId,
+  onSelect,
+  onDelete,
+  onClose,
+}: {
+  sessions: SessionListItem[]
+  currentSessionId: string
+  onSelect: (id: string) => void
+  onDelete: (id: string) => void
+  onClose?: () => void
+}) {
+  return (
+    <div>
+      <div className="px-3 py-1.5 text-[12px] font-medium text-gray-400">
+        搜索结果 {sessions.length} 条
+      </div>
+      {sessions.length > 0 ? (
+        <div className="space-y-0.5">
+          {sessions.map((session) => (
+            <SessionRow
+              key={session.id}
+              session={session}
+              currentSessionId={currentSessionId}
+              onSelect={(id) => {
+                onSelect(id)
+                onClose?.()
+              }}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="px-3 py-8 text-center text-[13px] text-gray-400">
+          没有匹配的对话
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -180,39 +291,13 @@ function SessionGroup({
       </div>
       <div className="space-y-0.5">
         {displayedSessions.map((session) => (
-          <div
+          <SessionRow
             key={session.id}
-            className={clsx(
-              'group flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-[14px] transition-colors',
-              session.id === currentSessionId
-                ? 'bg-[#e5f0ff] text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                : 'text-gray-700 hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5',
-            )}
-            onClick={() => {
-              onSelect(session.id)
-            }}
-          >
-            <div className="flex min-w-0 items-center gap-2.5">
-              <Folder
-                className={clsx(
-                  'h-[16px] w-[16px] flex-shrink-0',
-                  session.id === currentSessionId ? 'text-blue-500' : 'text-gray-400',
-                )}
-              />
-              <span className="truncate">{session.title?.trim() || session.id}</span>
-            </div>
-            <button
-              type="button"
-              className="rounded p-1 text-gray-400 opacity-0 transition-all hover:bg-black/10 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-white/10"
-              onClick={(event) => {
-                event.stopPropagation()
-                onDelete(session.id)
-              }}
-              aria-label="Delete session"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
+            session={session}
+            currentSessionId={currentSessionId}
+            onSelect={onSelect}
+            onDelete={onDelete}
+          />
         ))}
         {hasHiddenSessions && (
           <button
@@ -225,6 +310,78 @@ function SessionGroup({
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+function SessionRow({
+  session,
+  currentSessionId,
+  onSelect,
+  onDelete,
+}: {
+  session: SessionListItem
+  currentSessionId: string
+  onSelect: (id: string) => void
+  onDelete: (id: string) => void
+}) {
+  const active = session.id === currentSessionId
+  const running = isRunningSession(session)
+  const statusLabel = getSessionStatusLabel(session)
+
+  return (
+    <div
+      className={clsx(
+        'group flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-[14px] transition-colors',
+        active
+          ? 'bg-[#e5f0ff] text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+          : 'text-gray-700 hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5',
+      )}
+      onClick={() => {
+        onSelect(session.id)
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        {running ? (
+          <LoaderCircle
+            className={clsx(
+              'h-[16px] w-[16px] flex-shrink-0 animate-spin',
+              active ? 'text-blue-500' : 'text-blue-500 dark:text-blue-300',
+            )}
+          />
+        ) : (
+          <Folder
+            className={clsx(
+              'h-[16px] w-[16px] flex-shrink-0',
+              active ? 'text-blue-500' : 'text-gray-400',
+            )}
+          />
+        )}
+        <div className="min-w-0">
+          <div className="truncate">{session.title?.trim() || session.id}</div>
+          {statusLabel ? (
+            <div
+              className={clsx(
+                'mt-0.5 text-[11px] leading-none',
+                running ? 'text-blue-500 dark:text-blue-300' : 'text-gray-400',
+              )}
+            >
+              {statusLabel}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <button
+        type="button"
+        className="rounded p-1 text-gray-400 opacity-0 transition-all hover:bg-black/10 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-white/10"
+        onClick={(event) => {
+          event.stopPropagation()
+          onDelete(session.id)
+        }}
+        aria-label="Delete session"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
     </div>
   )
 }
