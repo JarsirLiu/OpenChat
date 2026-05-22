@@ -64,14 +64,18 @@ export function ChatLanding({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center bg-gray-50/30 px-2 py-6 text-center dark:bg-gray-900/30 sm:px-4 sm:py-8">
-      <div className="w-full max-w-2xl space-y-5 sm:space-y-6">
+      <div className="w-full max-w-3xl space-y-5 sm:space-y-6">
         <div className="flex justify-center">
-          <div className="rounded-[28px] border border-gray-100 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-4">
-            <ChatBrandIcon providerInitial={providerInitial} size={44} />
+          <div className="rounded-[28px] border border-gray-100 bg-white p-3 shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:border-gray-700 dark:bg-gray-800 sm:p-4">
+            <ChatBrandIcon
+              providerInitial={providerInitial}
+              showProviderInitial={false}
+              size={44}
+            />
           </div>
         </div>
 
-        <div className="space-y-2">
+        <div className="mx-auto max-w-lg space-y-2">
           <h1 className="text-[24px] font-bold leading-tight tracking-[-0.03em] text-gray-900 dark:text-white sm:text-3xl">
             {greeting}
           </h1>
@@ -80,19 +84,21 @@ export function ChatLanding({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 pt-3 text-left sm:grid-cols-2 sm:pt-4">
-          <PromptGroup
-            icon={Rocket}
-            title="快速开始"
-            items={quickStartItems}
-            onSelectPrompt={onSelectPrompt}
-          />
-          <PromptGroup
-            icon={Compass}
-            title="探索助理"
-            items={assistantItems}
-            onSelectPrompt={onSelectPrompt}
-          />
+        <div className="flex justify-center pt-3 sm:justify-end sm:pt-4">
+          <div className="grid w-full max-w-2xl grid-cols-1 gap-4 text-left sm:grid-cols-2">
+            <PromptGroup
+              icon={Rocket}
+              title="快速开始"
+              items={quickStartItems}
+              onSelectPrompt={onSelectPrompt}
+            />
+            <PromptGroup
+              icon={Compass}
+              title="探索助理"
+              items={assistantItems}
+              onSelectPrompt={onSelectPrompt}
+            />
+          </div>
         </div>
       </div>
     </div>
