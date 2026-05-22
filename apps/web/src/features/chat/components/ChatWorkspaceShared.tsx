@@ -96,6 +96,7 @@ export function ChatWorkspaceMainPane({
               <ChatLanding
                 username={currentUsername}
                 providerInitial={selectedProviderInitial}
+                onSelectPrompt={onChangeInput}
               />
             </div>
             <div className="relative z-10">
