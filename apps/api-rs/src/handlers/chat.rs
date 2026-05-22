@@ -158,6 +158,18 @@ async fn bind_attachments_to_session(
         .map_err(|error| ErrorResponseDto::from_code(VALIDATION_ERROR, error.to_string()))
 }
 
+async fn ensure_session_exists(
+    state: &AppState,
+    user_id: &str,
+    session_id: &str,
+) -> Result<(), ErrorResponseDto> {
+    state
+        .chat_store
+        .ensure_session(user_id, session_id)
+        .await
+        .map_err(|error| ErrorResponseDto::from_code(VALIDATION_ERROR, error.to_string()))
+}
+
 pub async fn send_message(
     State(state): State<AppState>,
     CurrentUser(auth): CurrentUser,
@@ -165,6 +177,11 @@ pub async fn send_message(
 ) -> impl IntoResponse {
     if let Err(error) = normalize_attachments(&state, auth.user_id(), &mut payload).await {
         return (StatusCode::FORBIDDEN, Json(error)).into_response();
+    }
+    if let Err(error) =
+        ensure_session_exists(&state, auth.user_id(), payload.session_id.as_str()).await
+    {
+        return (StatusCode::BAD_REQUEST, Json(error)).into_response();
     }
     if let Err(error) = bind_attachments_to_session(
         &state,
