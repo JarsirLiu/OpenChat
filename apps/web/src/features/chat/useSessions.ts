@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { authenticatedFetch, AuthError } from '../../lib/auth'
 import { ApiError, ensureOk, toApiError } from '../../lib/apiError'
-import { parseTimestamp } from './timestamps'
 
 export interface SessionListItem {
   id: string
@@ -72,11 +71,7 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
         index === existingIndex ? nextSession : session,
       )
 
-      return merged.sort(
-        (left, right) =>
-          parseTimestamp(right.updatedAt) - parseTimestamp(left.updatedAt) ||
-          parseTimestamp(right.createdAt) - parseTimestamp(left.createdAt),
-      )
+      return merged
     })
   }, [])
 

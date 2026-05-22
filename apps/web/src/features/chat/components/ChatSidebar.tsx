@@ -61,10 +61,6 @@ export function ChatSidebar({
     () => groupSessionsByRelativeTime(filteredSessions),
     [filteredSessions],
   )
-  const runningCount = useMemo(
-    () => sessions.filter((session) => isRunningSession(session)).length,
-    [sessions],
-  )
   const isSearching = normalizedSearchQuery.length > 0
 
   return (
@@ -128,13 +124,6 @@ export function ChatSidebar({
         </div>
 
         <div className="-mx-1 flex-1 space-y-3 overflow-y-auto px-1">
-          {runningCount > 0 && !isSearching ? (
-            <div className="mx-1 flex items-center gap-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-[12px] font-medium text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-              <span>{runningCount} 个对话正在执行</span>
-            </div>
-          ) : null}
-
           {loading ? (
             <div className="flex items-center gap-2 p-2 text-sm text-gray-500">
               <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -210,7 +199,6 @@ export function ChatSidebar({
 const isRunningSession = (session: SessionListItem) => session.status === 'running'
 
 const getSessionStatusLabel = (session: SessionListItem) => {
-  if (isRunningSession(session)) return '生成中'
   if (session.status === 'failed') return '失败'
   if (session.status === 'interrupted') return '已中止'
   return ''
@@ -327,7 +315,6 @@ function SessionRow({
 }) {
   const active = session.id === currentSessionId
   const running = isRunningSession(session)
-  const statusLabel = getSessionStatusLabel(session)
 
   return (
     <div
@@ -342,46 +329,35 @@ function SessionRow({
       }}
     >
       <div className="flex min-w-0 items-center gap-2.5">
+        <Folder
+          className={clsx(
+            'h-[16px] w-[16px] flex-shrink-0',
+            active ? 'text-blue-500' : 'text-gray-400',
+          )}
+        />
+        <span className="truncate">{session.title?.trim() || session.id}</span>
+      </div>
+      <div className="flex flex-shrink-0 items-center gap-1.5">
         {running ? (
           <LoaderCircle
             className={clsx(
-              'h-[16px] w-[16px] flex-shrink-0 animate-spin',
-              active ? 'text-blue-500' : 'text-blue-500 dark:text-blue-300',
+              'h-3.5 w-3.5 animate-spin',
+              active ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500',
             )}
           />
-        ) : (
-          <Folder
-            className={clsx(
-              'h-[16px] w-[16px] flex-shrink-0',
-              active ? 'text-blue-500' : 'text-gray-400',
-            )}
-          />
-        )}
-        <div className="min-w-0">
-          <div className="truncate">{session.title?.trim() || session.id}</div>
-          {statusLabel ? (
-            <div
-              className={clsx(
-                'mt-0.5 text-[11px] leading-none',
-                running ? 'text-blue-500 dark:text-blue-300' : 'text-gray-400',
-              )}
-            >
-              {statusLabel}
-            </div>
-          ) : null}
-        </div>
+        ) : null}
+        <button
+          type="button"
+          className="rounded p-1 text-gray-400 opacity-0 transition-all hover:bg-black/10 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-white/10"
+          onClick={(event) => {
+            event.stopPropagation()
+            onDelete(session.id)
+          }}
+          aria-label="Delete session"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
       </div>
-      <button
-        type="button"
-        className="rounded p-1 text-gray-400 opacity-0 transition-all hover:bg-black/10 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-white/10"
-        onClick={(event) => {
-          event.stopPropagation()
-          onDelete(session.id)
-        }}
-        aria-label="Delete session"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
     </div>
   )
 }

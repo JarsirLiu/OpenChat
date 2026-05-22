@@ -12,13 +12,7 @@ export const groupSessionsByRelativeTime = (sessions: SessionListItem[]): Sessio
   const todayIndex = shanghaiDayIndex(nowTimestamp)
   const weekStartIndex = shanghaiWeekStartDayIndex(nowTimestamp)
 
-  const sortedSessions = [...sessions].sort(
-    (left, right) =>
-      parseTimestamp(right.updatedAt) - parseTimestamp(left.updatedAt) ||
-      parseTimestamp(right.createdAt) - parseTimestamp(left.createdAt),
-  )
-
-  return sortedSessions.reduce<SessionGroups>(
+  return sessions.reduce<SessionGroups>(
     (acc, session) => {
       const sessionDayIndex = shanghaiDayIndex(parseTimestamp(session.updatedAt))
 
