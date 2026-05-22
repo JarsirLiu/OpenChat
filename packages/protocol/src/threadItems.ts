@@ -34,6 +34,7 @@ export interface AssistantPlaceholderThreadItem extends ThreadItemBase {
 
 export interface GeneratedImageAsset {
   url: string
+  objectKey?: string | null
   mimeType: string
   sizeBytes?: number
 }

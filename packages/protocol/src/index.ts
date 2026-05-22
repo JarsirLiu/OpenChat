@@ -52,6 +52,7 @@ export interface MessageContentImage {
 export interface ToolMedia {
   kind: string
   url: string
+  objectKey?: string | null
   mimeType: string
   sizeBytes: number
 }

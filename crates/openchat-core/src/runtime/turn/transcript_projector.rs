@@ -511,6 +511,7 @@ impl TranscriptProjector {
                 .map(|media| {
                     json!({
                         "url": media.url,
+                        "objectKey": media.object_key,
                         "mimeType": media.mime_type,
                         "sizeBytes": media.size_bytes,
                     })

@@ -269,6 +269,7 @@ describe('threadRuntime', () => {
               {
                 kind: 'image',
                 url: 'https://example.com/cat.png',
+                objectKey: 'media/users/user_1/sessions/session_1/turns/turn_1/tools/call_cat_0.png',
                 mimeType: 'image/png',
                 sizeBytes: 1234,
               },
@@ -312,6 +313,7 @@ describe('threadRuntime', () => {
     expect(imageItem.images).toEqual([
       {
         url: 'https://example.com/cat.png',
+        objectKey: 'media/users/user_1/sessions/session_1/turns/turn_1/tools/call_cat_0.png',
         mimeType: 'image/png',
         sizeBytes: 1234,
       },

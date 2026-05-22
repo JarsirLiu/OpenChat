@@ -449,6 +449,7 @@ export const applyThreadStreamEvent = (
           mediaImages.length > 0
             ? mediaImages.map((image) => ({
                 url: image.url,
+                objectKey: image.objectKey ?? null,
                 mimeType: image.mimeType,
                 sizeBytes: image.sizeBytes,
               }))

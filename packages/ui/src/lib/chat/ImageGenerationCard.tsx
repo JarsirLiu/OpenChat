@@ -4,6 +4,7 @@ import { Download, ImageIcon, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { getToolMedia } from './toolCallMeta'
+import { getImageExtension, getMediaUrl } from './mediaUrl'
 
 interface ImageGenerationCardProps {
   toolCall: ToolCallSummary
@@ -42,7 +43,7 @@ const sanitizeDownloadName = (value: string) =>
 
 const downloadImageAsset = async (url: string, filename: string) => {
   try {
-    const response = await fetch(url)
+    const response = await fetch(url, { credentials: 'same-origin' })
     if (!response.ok) {
       throw new Error(`download failed: ${response.status}`)
     }
@@ -140,8 +141,9 @@ export function ImageGenerationCard({
     }
   }, [startedAtMs, status])
 
-  const handleDownload = async (url: string, index: number) => {
-    const extension = url.match(/\.([a-zA-Z0-9]+)(?:[?#]|$)/)?.[1] ?? 'png'
+  const handleDownload = async (asset: (typeof images)[number], index: number) => {
+    const url = getMediaUrl(asset)
+    const extension = getImageExtension(asset)
     setDownloadingUrl(url)
     try {
       await downloadImageAsset(url, `${downloadBaseName}-${index + 1}.${extension}`)
@@ -168,24 +170,24 @@ export function ImageGenerationCard({
             {images.length > 0 ? (
               <div className={`lc-image-gen-grid ${images.length === 1 ? 'is-single' : ''}`}>
                 {images.map((asset, index) => (
-                  <div key={`${asset.url}:${index}`} className="lc-image-gen-image-tile">
+                  <div key={`${asset.objectKey ?? asset.url}:${index}`} className="lc-image-gen-image-tile">
                     <a
                       className="lc-image-gen-image-link"
-                      href={asset.url}
+                      href={getMediaUrl(asset)}
                       target="_blank"
                       rel="noreferrer"
                     >
                       <img
                         className="lc-image-gen-image"
-                        src={asset.url}
+                        src={getMediaUrl(asset)}
                         alt={`${label} result ${index + 1}`}
                       />
                     </a>
                     <button
                       type="button"
                       className="lc-image-gen-download-button"
-                      onClick={() => void handleDownload(asset.url, index)}
-                      disabled={downloadingUrl === asset.url}
+                      onClick={() => void handleDownload(asset, index)}
+                      disabled={downloadingUrl === getMediaUrl(asset)}
                       aria-label={`下载第 ${index + 1} 张原图`}
                     >
                       <Download size={14} />

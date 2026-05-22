@@ -250,6 +250,7 @@ impl ChatStore {
                             SELECT jsonb_agg(
                               jsonb_build_object(
                                 'url', media_entry->>'url',
+                                'objectKey', media_entry->>'objectKey',
                                 'mimeType', media_entry->>'mimeType',
                                 'sizeBytes',
                                   CASE
@@ -388,6 +389,7 @@ impl ChatStore {
                             SELECT jsonb_agg(
                               jsonb_build_object(
                                 'url', media_entry->>'url',
+                                'objectKey', media_entry->>'objectKey',
                                 'mimeType', media_entry->>'mimeType',
                                 'sizeBytes',
                                   CASE

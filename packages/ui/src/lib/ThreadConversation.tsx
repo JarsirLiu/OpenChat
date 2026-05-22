@@ -8,6 +8,7 @@ import { ContentLoading } from './chat/parts/ContentLoading'
 import { Image } from './chat/parts/Image'
 import { Reasoning } from './chat/parts/Reasoning'
 import { Text } from './chat/parts/Text'
+import { getImageExtension, getMediaUrl } from './chat/mediaUrl'
 
 interface ThreadConversationProps {
   state: ChatRuntimeV2State
@@ -96,7 +97,7 @@ const createDownloadBaseName = (itemId: string) => {
 
 const downloadImageAsset = async (url: string, filename: string) => {
   try {
-    const response = await fetch(url)
+    const response = await fetch(url, { credentials: 'same-origin' })
     if (!response.ok) {
       throw new Error(`download failed: ${response.status}`)
     }
@@ -189,8 +190,9 @@ const ImageGenerationBlock = ({
     }
   }, [item.status])
 
-  const handleDownload = async (url: string, index: number) => {
-    const extension = url.match(/\.([a-zA-Z0-9]+)(?:[?#]|$)/)?.[1] ?? 'png'
+  const handleDownload = async (asset: (typeof item.images)[number], index: number) => {
+    const url = getMediaUrl(asset)
+    const extension = getImageExtension(asset)
     setDownloadingUrl(url)
     try {
       await downloadImageAsset(url, `${downloadBaseName}-${index + 1}.${extension}`)
@@ -237,15 +239,27 @@ const ImageGenerationBlock = ({
           {item.images.length > 0 ? (
             <div className={`lc-image-gen-grid ${item.images.length === 1 ? 'is-single' : ''}`}>
               {item.images.map((asset, index) => (
-                <div key={`${asset.url}:${index}`} className="lc-image-gen-image-tile">
-                  <a className="lc-image-gen-image-link" href={asset.url} target="_blank" rel="noreferrer">
-                    <img className="lc-image-gen-image" src={asset.url} alt={`image result ${index + 1}`} />
+                <div
+                  key={`${asset.objectKey ?? asset.url}:${index}`}
+                  className="lc-image-gen-image-tile"
+                >
+                  <a
+                    className="lc-image-gen-image-link"
+                    href={getMediaUrl(asset)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <img
+                      className="lc-image-gen-image"
+                      src={getMediaUrl(asset)}
+                      alt={`image result ${index + 1}`}
+                    />
                   </a>
                   <button
                     type="button"
                     className="lc-image-gen-download-button"
-                    onClick={() => void handleDownload(asset.url, index)}
-                    disabled={downloadingUrl === asset.url}
+                    onClick={() => void handleDownload(asset, index)}
+                    disabled={downloadingUrl === getMediaUrl(asset)}
                     aria-label={`下载第 ${index + 1} 张原图`}
                   >
                     <Download size={14} />

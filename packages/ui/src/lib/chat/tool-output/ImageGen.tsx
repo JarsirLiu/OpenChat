@@ -3,6 +3,7 @@ import type { ToolMedia } from '@openchat/protocol'
 import { ToolIcon, getToolIconType } from './ToolIcon'
 import { ProgressText } from './ProgressText'
 import { ToolCallInfo } from './ToolCallInfo'
+import { getMediaUrl } from '../mediaUrl'
 
 interface ImageGenProps {
   toolName: string
@@ -44,15 +45,15 @@ export function ImageGen({
             <div className="lc-tool-image-grid">
               {imageMedia.map((asset, index) => (
                 <a
-                  key={`${asset.url}:${index}`}
+                  key={`${asset.objectKey ?? asset.url}:${index}`}
                   className="lc-tool-image-link"
-                  href={asset.url}
+                  href={getMediaUrl(asset)}
                   target="_blank"
                   rel="noreferrer"
                 >
                   <img
                     className="lc-tool-image"
-                    src={asset.url}
+                    src={getMediaUrl(asset)}
                     alt={`${toolName} result ${index + 1}`}
                   />
                 </a>
