@@ -143,35 +143,18 @@ export function ChatSidebar({
             />
           ) : null}
 
-          {!isSearching && groupedSessions.today.length > 0 && (
-            <SessionGroup
-              title="今天"
-              sessions={groupedSessions.today}
-              currentSessionId={currentSessionId}
-              onSelect={onSelect}
-              onDelete={onDeleteSession}
-            />
-          )}
-
-          {!isSearching && groupedSessions.thisWeek.length > 0 && (
-            <SessionGroup
-              title="本周"
-              sessions={groupedSessions.thisWeek}
-              currentSessionId={currentSessionId}
-              onSelect={onSelect}
-              onDelete={onDeleteSession}
-            />
-          )}
-
-          {!isSearching && groupedSessions.older.length > 0 && (
-            <SessionGroup
-              title="更早"
-              sessions={groupedSessions.older}
-              currentSessionId={currentSessionId}
-              onSelect={onSelect}
-              onDelete={onDeleteSession}
-            />
-          )}
+          {!isSearching
+            ? groupedSessions.map((group) => (
+                <SessionGroup
+                  key={group.key}
+                  title={group.title}
+                  sessions={group.sessions}
+                  currentSessionId={currentSessionId}
+                  onSelect={onSelect}
+                  onDelete={onDeleteSession}
+                />
+              ))
+            : null}
 
           {!loading && !error && sessions.length === 0 ? (
             <div className="px-3 py-8 text-center text-[13px] text-gray-400">暂无对话</div>
