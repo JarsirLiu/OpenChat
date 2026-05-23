@@ -9,4 +9,4 @@ export const filterSupportedImageFiles = (files: File[]) =>
   files.filter((file) => isSupportedImageMimeType(file.type))
 
 export const getUnsupportedImageMessage = () =>
-  '当前仅支持 PNG、JPG/JPEG、WebP 图片格式'
+  '当前仅支持 PNG、JPG/JPEG、WebP 图片上传，暂不支持 PDF、Word 等文件'

@@ -3,6 +3,7 @@ import { ArrowUp, Check, ChevronDown, ImagePlus, Plus, Search, Square, X } from 
 import clsx from 'clsx'
 import {
   filterSupportedImageFiles,
+  getUnsupportedImageMessage,
   SUPPORTED_IMAGE_ACCEPT,
 } from '../imageUpload'
 import { resolveModelIconKey } from '../modelIcon'
@@ -82,7 +83,7 @@ export function ChatComposer({
   const [imageToolMenuOpen, setImageToolMenuOpen] = useState(false)
   const [modelQuery, setModelQuery] = useState('')
   const [imageToolQuery, setImageToolQuery] = useState('')
-  const [attachmentNoticeVisible, setAttachmentNoticeVisible] = useState(false)
+  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null)
 
   useEffect(() => {
     const textarea = textareaRef.current
@@ -114,16 +115,16 @@ export function ChatComposer({
   }, [imageToolMenuOpen])
 
   useEffect(() => {
-    if (!attachmentNoticeVisible) {
+    if (!attachmentNotice) {
       return
     }
 
     const timeout = window.setTimeout(() => {
-      setAttachmentNoticeVisible(false)
+      setAttachmentNotice(null)
     }, 3500)
 
     return () => window.clearTimeout(timeout)
-  }, [attachmentNoticeVisible])
+  }, [attachmentNotice])
 
   const filteredModels = useMemo(() => {
     const query = modelQuery.trim().toLowerCase()
@@ -155,6 +156,9 @@ export function ChatComposer({
       const normalized = modality.toLowerCase()
       return normalized === 'image' || normalized === 'vision'
     }) ?? false
+  const imageUploadUnavailableMessage = selectedModelSupportsImageInputs
+    ? null
+    : '当前模型不支持图像输入，请切换到多模态模型后上传图片'
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -180,13 +184,13 @@ export function ChatComposer({
     if (supportedFiles.length === 0) {
       if (files.length > 0) {
         event.preventDefault()
-        setAttachmentNoticeVisible(true)
+        setAttachmentNotice(getUnsupportedImageMessage())
       }
       return
     }
 
     if (!canUploadImages) {
-      setAttachmentNoticeVisible(true)
+      setAttachmentNotice(imageUploadUnavailableMessage ?? '当前暂不能上传图片')
       return
     }
 
@@ -256,7 +260,7 @@ export function ChatComposer({
                 if (files.length === 0) return
                 const supportedFiles = filterSupportedImageFiles(files)
                 if (supportedFiles.length === 0) {
-                  setAttachmentNoticeVisible(true)
+                  setAttachmentNotice(getUnsupportedImageMessage())
                   return
                 }
                 void onUploadImages(supportedFiles)
@@ -264,16 +268,30 @@ export function ChatComposer({
             />
             <button
               type="button"
-              disabled={!canUploadImages || pending}
-              onClick={() => fileInputRef.current?.click()}
+              disabled={pending}
+              onClick={() => {
+                if (!canUploadImages) {
+                  setAttachmentNotice(imageUploadUnavailableMessage ?? '当前暂不能上传图片')
+                  return
+                }
+                fileInputRef.current?.click()
+              }}
               className={clsx(
                 'flex h-8 w-8 items-center justify-center rounded-full border transition-colors',
                 canUploadImages && !pending
                   ? 'border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800'
-                  : 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-600',
+                  : pending
+                    ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-600'
+                    : 'border-gray-200 bg-gray-50 text-gray-400 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500 dark:hover:bg-gray-800',
               )}
-              aria-label="上传附件"
-              title={canUploadImages ? '上传附件' : '当前模型不支持图像输入'}
+              aria-label="上传图片"
+              title={
+                pending
+                  ? '生成中暂不能上传图片'
+                  : canUploadImages
+                    ? '上传图片'
+                    : imageUploadUnavailableMessage ?? '当前暂不能上传图片'
+              }
             >
               <Plus className="h-4 w-4" strokeWidth={2.4} />
             </button>
@@ -538,9 +556,9 @@ export function ChatComposer({
           </div>
         </div>
 
-        {attachmentNoticeVisible ? (
+        {attachmentNotice ? (
           <div className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-[12px] text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
-            当前模型不支持图像输入，请切换到多模态模型或移除图片附件
+            {attachmentNotice}
           </div>
         ) : null}
       </div>
