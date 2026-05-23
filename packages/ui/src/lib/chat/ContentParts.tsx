@@ -3,6 +3,7 @@ import type { ChatRuntimeState } from '@openchat/chat-core'
 import type { ChatMessage } from '@openchat/protocol'
 import { buildMessageParts } from './messageParts'
 import { ToolCallGroup } from './ToolCallGroup'
+import { Document } from './parts/Document'
 import { Image } from './parts/Image'
 import { Text } from './parts/Text'
 
@@ -35,6 +36,18 @@ export function ContentParts({ message, toolState, emptyFallback }: ContentParts
 
         if (part.type === 'image') {
           return <Image key={`image:${part.url}:${index}`} url={part.url} alt={part.alt} />
+        }
+
+        if (part.type === 'document') {
+          return (
+            <Document
+              key={`document:${part.url}:${index}`}
+              url={part.url}
+              name={part.name}
+              mimeType={part.mimeType}
+              sizeBytes={part.sizeBytes}
+            />
+          )
         }
 
         return (

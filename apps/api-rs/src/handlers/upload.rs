@@ -4,7 +4,7 @@ use crate::{
             chat_service_error_response_from_error, ErrorResponseDto, UNSUPPORTED_UPLOAD_TYPE,
             UPLOAD_PAYLOAD_INVALID,
         },
-        upload::UploadedImageDto,
+        upload::UploadedAttachmentDto,
     },
     security::extractors::CurrentUser,
     state::AppState,
@@ -17,12 +17,42 @@ use axum::{
 };
 
 const SUPPORTED_IMAGE_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/webp"];
+const SUPPORTED_DOCUMENT_MIME_TYPES: &[&str] = &[
+    "text/plain",
+    "text/markdown",
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+const MAX_UPLOAD_BYTES: usize = 20 * 1024 * 1024;
 
 pub async fn upload_images(
     State(state): State<AppState>,
     CurrentUser(auth): CurrentUser,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
+    upload_multipart(&state, auth.user_id(), &mut multipart, UploadMode::ImagesOnly).await
+}
+
+pub async fn upload_files(
+    State(state): State<AppState>,
+    CurrentUser(auth): CurrentUser,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
+    upload_multipart(&state, auth.user_id(), &mut multipart, UploadMode::ImagesAndDocuments).await
+}
+
+#[derive(Clone, Copy)]
+enum UploadMode {
+    ImagesOnly,
+    ImagesAndDocuments,
+}
+
+async fn upload_multipart(
+    state: &AppState,
+    user_id: &str,
+    multipart: &mut Multipart,
+    mode: UploadMode,
+) -> axum::response::Response {
     let mut uploaded = Vec::new();
     let mut index = 0usize;
 
@@ -45,17 +75,12 @@ pub async fn upload_images(
             .unwrap_or("application/octet-stream")
             .to_string();
 
-        if !SUPPORTED_IMAGE_MIME_TYPES
-            .iter()
-            .any(|supported| mime_type.eq_ignore_ascii_case(supported))
-        {
+        if !is_supported_upload_type(mime_type.as_str(), file_name.as_str(), mode) {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponseDto::from_code(
                     UNSUPPORTED_UPLOAD_TYPE,
-                    format!(
-                        "Unsupported upload type `{mime_type}`. Only PNG, JPG/JPEG, and WebP are supported."
-                    ),
+                    unsupported_upload_message(mode, mime_type.as_str()),
                 )),
             )
                 .into_response();
@@ -74,15 +99,46 @@ pub async fn upload_images(
                     .into_response()
             }
         };
+        if bytes.len() > MAX_UPLOAD_BYTES {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponseDto::from_code(
+                    UPLOAD_PAYLOAD_INVALID,
+                    format!("上传文件不能超过 {} MB", MAX_UPLOAD_BYTES / 1024 / 1024),
+                )),
+            )
+                .into_response();
+        }
 
-        let object_key = build_upload_key(auth.user_id(), index, file_name.as_str());
+        let extracted_text = if matches!(mode, UploadMode::ImagesAndDocuments)
+            && !mime_type.to_ascii_lowercase().starts_with("image/")
+        {
+            match crate::document_text::extract_supported_document_text(
+                bytes.as_slice(),
+                mime_type.as_str(),
+                file_name.as_str(),
+            ) {
+                Ok(text) => text,
+                Err(error) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(ErrorResponseDto::from_code(UPLOAD_PAYLOAD_INVALID, error)),
+                    )
+                        .into_response()
+                }
+            }
+        } else {
+            None
+        };
+
+        let object_key = build_upload_key(user_id, index, file_name.as_str());
         let stored = match state
             .media_store
             .put_owned_bytes(
                 object_key.as_str(),
                 bytes,
                 mime_type.as_str(),
-                auth.user_id(),
+                user_id,
                 None,
                 None,
             )
@@ -92,17 +148,58 @@ pub async fn upload_images(
             Err(error) => return chat_service_error_response_from_error(error),
         };
 
-        uploaded.push(UploadedImageDto {
+        uploaded.push(UploadedAttachmentDto {
             id: stored.key,
             url: stored.browser_url,
             name: file_name,
             mime_type: stored.content_type,
             size_bytes: stored.size_bytes,
+            kind: if mime_type.to_ascii_lowercase().starts_with("image/") {
+                "image".to_string()
+            } else {
+                "document".to_string()
+            },
+            extracted_text,
         });
         index += 1;
     }
 
     (StatusCode::OK, Json(uploaded)).into_response()
+}
+
+fn is_supported_upload_type(mime_type: &str, file_name: &str, mode: UploadMode) -> bool {
+    let normalized_mime = mime_type.to_ascii_lowercase();
+    if SUPPORTED_IMAGE_MIME_TYPES
+        .iter()
+        .any(|supported| normalized_mime == *supported)
+    {
+        return true;
+    }
+
+    if !matches!(mode, UploadMode::ImagesAndDocuments) {
+        return false;
+    }
+
+    let lower_name = file_name.to_ascii_lowercase();
+    SUPPORTED_DOCUMENT_MIME_TYPES
+        .iter()
+        .any(|supported| normalized_mime == *supported)
+        || lower_name.ends_with(".txt")
+        || lower_name.ends_with(".md")
+        || lower_name.ends_with(".markdown")
+        || lower_name.ends_with(".pdf")
+        || lower_name.ends_with(".docx")
+}
+
+fn unsupported_upload_message(mode: UploadMode, mime_type: &str) -> String {
+    match mode {
+        UploadMode::ImagesOnly => format!(
+            "Unsupported upload type `{mime_type}`. Only PNG, JPG/JPEG, and WebP are supported."
+        ),
+        UploadMode::ImagesAndDocuments => format!(
+            "Unsupported upload type `{mime_type}`. Supported: PNG, JPG/JPEG, WebP, TXT, Markdown, PDF, and DOCX."
+        ),
+    }
 }
 
 fn build_upload_key(user_id: &str, index: usize, file_name: &str) -> String {

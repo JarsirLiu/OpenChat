@@ -25,3 +25,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rand = "0.8"
 time = "0.3"
+lopdf = "0.34"
+quick-xml = "0.36"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from 'react'
-import { ArrowUp, Check, ChevronDown, ImagePlus, Plus, Search, Square, X } from 'lucide-react'
+import { ArrowUp, Check, ChevronDown, FileText, ImagePlus, Plus, Search, Square, X } from 'lucide-react'
 import clsx from 'clsx'
 import {
+  filterSupportedAttachmentFiles,
   filterSupportedImageFiles,
   getUnsupportedImageMessage,
   SUPPORTED_IMAGE_ACCEPT,
@@ -179,7 +180,8 @@ export function ChatComposer({
 
   const handlePaste = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const files = Array.from(event.clipboardData.files ?? [])
-    const supportedFiles = filterSupportedImageFiles(files)
+    const supportedFiles = filterSupportedAttachmentFiles(files)
+    const imageFiles = filterSupportedImageFiles(supportedFiles)
 
     if (supportedFiles.length === 0) {
       if (files.length > 0) {
@@ -189,7 +191,7 @@ export function ChatComposer({
       return
     }
 
-    if (!canUploadImages) {
+    if (imageFiles.length > 0 && !canUploadImages) {
       setAttachmentNotice(imageUploadUnavailableMessage ?? '当前暂不能上传图片')
       return
     }
@@ -212,13 +214,27 @@ export function ChatComposer({
             {attachments.map((attachment) => (
               <div
                 key={attachment.id}
-                className="relative h-12 w-12 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900"
+                className={clsx(
+                  'relative overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900',
+                  attachment.mime_type.startsWith('image/') ? 'h-12 w-12' : 'flex h-12 max-w-[220px] items-center gap-2 px-2 pr-8',
+                )}
               >
-                <img
-                  src={attachment.url}
-                  alt={attachment.name}
-                  className="h-full w-full object-cover"
-                />
+                {attachment.mime_type.startsWith('image/') ? (
+                  <img
+                    src={attachment.url}
+                    alt={attachment.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <>
+                    <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300">
+                      <FileText className="h-4 w-4" strokeWidth={2.2} />
+                    </span>
+                    <span className="min-w-0 truncate text-[12px] font-medium text-gray-700 dark:text-gray-200">
+                      {attachment.name}
+                    </span>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={() => onRemoveAttachment(attachment.id)}
@@ -258,9 +274,14 @@ export function ChatComposer({
                 const files = Array.from(event.target.files ?? [])
                 event.currentTarget.value = ''
                 if (files.length === 0) return
-                const supportedFiles = filterSupportedImageFiles(files)
+                const supportedFiles = filterSupportedAttachmentFiles(files)
+                const imageFiles = filterSupportedImageFiles(supportedFiles)
                 if (supportedFiles.length === 0) {
                   setAttachmentNotice(getUnsupportedImageMessage())
+                  return
+                }
+                if (imageFiles.length > 0 && !canUploadImages) {
+                  setAttachmentNotice(imageUploadUnavailableMessage ?? '当前暂不能上传图片')
                   return
                 }
                 void onUploadImages(supportedFiles)
@@ -270,27 +291,21 @@ export function ChatComposer({
               type="button"
               disabled={pending}
               onClick={() => {
-                if (!canUploadImages) {
-                  setAttachmentNotice(imageUploadUnavailableMessage ?? '当前暂不能上传图片')
-                  return
-                }
                 fileInputRef.current?.click()
               }}
               className={clsx(
                 'flex h-8 w-8 items-center justify-center rounded-full border transition-colors',
-                canUploadImages && !pending
+                !pending
                   ? 'border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800'
                   : pending
                     ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-600'
                     : 'border-gray-200 bg-gray-50 text-gray-400 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500 dark:hover:bg-gray-800',
               )}
-              aria-label="上传图片"
+              aria-label="上传图片或文档"
               title={
                 pending
-                  ? '生成中暂不能上传图片'
-                  : canUploadImages
-                    ? '上传图片'
-                    : imageUploadUnavailableMessage ?? '当前暂不能上传图片'
+                  ? '生成中暂不能上传文件'
+                  : '上传图片或文档'
               }
             >
               <Plus className="h-4 w-4" strokeWidth={2.4} />

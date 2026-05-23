@@ -24,6 +24,8 @@ pub fn user_content_to_json(text: &str, attachments: &[TurnAttachment]) -> Value
                 attachment.name.as_str(),
                 Some(attachment.id.clone()),
             ));
+        } else {
+            parts.push(document_part(attachment));
         }
     }
 
@@ -45,6 +47,14 @@ pub fn user_content_to_outbound_parts(
             parts.push(OutboundContentPart::ImageUrl {
                 url: attachment.url.clone(),
                 media_id: Some(attachment.id.clone()),
+            });
+        } else {
+            parts.push(OutboundContentPart::Document {
+                url: attachment.url.clone(),
+                media_id: Some(attachment.id.clone()),
+                name: attachment.name.clone(),
+                mime_type: attachment.mime_type.clone(),
+                size_bytes: attachment.size_bytes,
             });
         }
     }
@@ -68,6 +78,28 @@ pub fn value_to_outbound_content_parts(value: Value) -> Vec<OutboundContentPart>
                         .get("media_id")
                         .and_then(Value::as_str)
                         .map(str::to_string),
+                }),
+                "document" => Some(OutboundContentPart::Document {
+                    url: part.get("url")?.as_str()?.to_string(),
+                    media_id: part
+                        .get("media_id")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    name: part
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("document")
+                        .to_string(),
+                    mime_type: part
+                        .get("mime_type")
+                        .and_then(Value::as_str)
+                        .unwrap_or("application/octet-stream")
+                        .to_string(),
+                    size_bytes: part
+                        .get("size_bytes")
+                        .and_then(Value::as_u64)
+                        .and_then(|value| usize::try_from(value).ok())
+                        .unwrap_or_default(),
                 }),
                 "tool_result" => Some(OutboundContentPart::ToolResult(OutboundToolResult {
                     tool_call_id: part.get("toolCallId")?.as_str()?.to_string(),
@@ -148,6 +180,17 @@ fn image_part(url: String, alt: &str, media_id: Option<String>) -> Value {
         "url": url,
         "alt": alt,
         "media_id": media_id,
+    })
+}
+
+fn document_part(attachment: &TurnAttachment) -> Value {
+    serde_json::json!({
+        "type": "document",
+        "url": attachment.url,
+        "name": attachment.name,
+        "mime_type": attachment.mime_type,
+        "size_bytes": attachment.size_bytes,
+        "media_id": attachment.id,
     })
 }
 

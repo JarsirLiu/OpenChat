@@ -17,6 +17,8 @@ pub struct UploadedAttachmentDto {
     pub name: String,
     pub mime_type: String,
     pub size_bytes: usize,
+    pub kind: Option<String>,
+    pub extracted_text: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -68,6 +70,8 @@ impl From<ChatRequestDto> for ChatRequest {
                     name: attachment.name,
                     mime_type: attachment.mime_type,
                     size_bytes: attachment.size_bytes,
+                    kind: attachment.kind,
+                    extracted_text: attachment.extracted_text,
                 })
                 .collect(),
             text_model: value.text_model.map(SelectedTextModel::from),

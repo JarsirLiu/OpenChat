@@ -46,6 +46,7 @@ pub fn build_router(state: AppState, config: &AppConfig) -> Router {
                 .delete(handlers::sessions::delete_session),
         )
         .route("/api/uploads/images", post(handlers::upload::upload_images))
+        .route("/api/uploads/files", post(handlers::upload::upload_files))
         .route("/api/chat", post(handlers::chat::send_message))
         .route(
             "/api/sessions/:session_id/turns/:turn_id/interrupt",

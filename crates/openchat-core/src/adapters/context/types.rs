@@ -21,6 +21,13 @@ pub enum OutboundContentPart {
         url: String,
         media_id: Option<String>,
     },
+    Document {
+        url: String,
+        media_id: Option<String>,
+        name: String,
+        mime_type: String,
+        size_bytes: usize,
+    },
     ToolResult(OutboundToolResult),
 }
 

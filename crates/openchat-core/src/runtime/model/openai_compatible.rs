@@ -490,12 +490,21 @@ async fn build_current_user_message_content(
                         detail: Some("auto".to_string()),
                     },
                 });
+            } else if !attachment.mime_type.starts_with("image/") {
+                parts.push(OpenAiContentPart::Text {
+                    text: format_document_context(image_ref_index + 1, attachment),
+                });
             }
         }
 
-        if parts
-            .iter()
-            .any(|part| matches!(part, OpenAiContentPart::ImageUrl { .. }))
+        if parts.iter().any(|part| {
+            matches!(part, OpenAiContentPart::ImageUrl { .. })
+                || matches!(
+                    part,
+                    OpenAiContentPart::Text { text }
+                    if text.starts_with("uploaded_document_")
+                )
+        })
         {
             return OpenAiMessageContent::Parts(parts);
         }
@@ -518,6 +527,16 @@ fn flatten_text_content(message: &OutboundMessage) -> String {
                     Some(url.as_str()),
                 ));
                 parts.push(text_only_image_placeholder().to_string())
+            }
+            OutboundContentPart::Document {
+                name,
+                mime_type,
+                size_bytes,
+                ..
+            } => {
+                parts.push(format!(
+                    "[User uploaded document: {name} ({mime_type}, {size_bytes} bytes)]"
+                ));
             }
             OutboundContentPart::ToolResult(tool_result) => {
                 parts.push(format_outbound_tool_result_text(tool_result));
@@ -542,10 +561,27 @@ fn flatten_current_user_input(prompt: &str, attachments: &[crate::TurnAttachment
                 Some(attachment.url.as_str()),
             ));
             parts.push(text_only_image_placeholder().to_string());
+        } else {
+            parts.push(format_document_context(index + 1, attachment));
         }
     }
 
     parts.join("\n")
+}
+
+fn format_document_context(index: usize, attachment: &crate::TurnAttachment) -> String {
+    let extracted_text = attachment.extracted_text.as_deref().unwrap_or("").trim();
+    if extracted_text.is_empty() {
+        return format!(
+            "[User uploaded document {index}: {} ({}), but no readable text could be extracted.]",
+            attachment.name, attachment.mime_type
+        );
+    }
+
+    format!(
+        "uploaded_document_{index}: {}\nMIME: {}\nContent:\n{}",
+        attachment.name, attachment.mime_type, extracted_text
+    )
 }
 
 fn format_image_reference_lines(
@@ -939,6 +975,8 @@ mod tests {
                 name: "upload.png".into(),
                 mime_type: "image/png".into(),
                 size_bytes: 128,
+                kind: Some("image".into()),
+                extracted_text: None,
             }],
             true,
             &NoopMediaResolver,

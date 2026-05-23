@@ -17,6 +17,7 @@ import {
 } from './sessionPreferences'
 import { useChatStream } from './useChatStream'
 import {
+  filterSupportedAttachmentFiles,
   filterSupportedImageFiles,
   getUnsupportedImageMessage,
 } from './imageUpload'
@@ -496,8 +497,8 @@ export function useChatWorkspace({
   const handleUploadImages = useCallback(
     async (files: File[]) => {
       try {
-        const imageFiles = filterSupportedImageFiles(files)
-        if (imageFiles.length === 0) {
+        const supportedFiles = filterSupportedAttachmentFiles(files)
+        if (supportedFiles.length === 0) {
           if (files.length > 0) {
             throw new ApiError(getUnsupportedImageMessage(), {
               status: 400,
@@ -509,7 +510,8 @@ export function useChatWorkspace({
           return
         }
 
-        if (!selectedModelSupportsImageInputs) {
+        const imageFiles = filterSupportedImageFiles(files)
+        if (imageFiles.length > 0 && !selectedModelSupportsImageInputs) {
           throw new ApiError('当前模型不支持图像输入，请切换到多模态模型后再上传图片', {
             status: 400,
             code: CLIENT_ERROR_CODES.imageInputNotSupported.code,
@@ -520,16 +522,21 @@ export function useChatWorkspace({
 
         setRequestErrorState(null)
         const preparedFiles = await compressImageFiles(imageFiles)
+        const imageFileSet = new Set<File>(imageFiles)
+        const documentFiles = supportedFiles.filter((file) => !imageFileSet.has(file))
 
         const formData = new FormData()
         for (const file of preparedFiles) {
           formData.append('files', file, file.name)
         }
+        for (const file of documentFiles) {
+          formData.append('files', file, file.name)
+        }
 
-        const response = await ensureOk(await authenticatedFetch('/api/uploads/images', {
+        const response = await ensureOk(await authenticatedFetch('/api/uploads/files', {
           method: 'POST',
           body: formData,
-        }), '图片上传失败')
+        }), '文件上传失败')
 
         const uploaded = (await response.json()) as UploadedImageAttachment[]
         setAttachments((current) => {
@@ -540,7 +547,7 @@ export function useChatWorkspace({
           ]
         })
       } catch (error) {
-        setRequestErrorState(toApiError(error, '图片上传失败'))
+        setRequestErrorState(toApiError(error, '文件上传失败'))
       }
     },
     [selectedModelSupportsImageInputs],

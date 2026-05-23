@@ -4,6 +4,7 @@ import { AssistantFrame } from './AssistantFrame'
 import { AssistantActionsBar } from './AssistantActionsBar'
 import { ContentParts } from './ContentParts'
 import { ContentLoading } from './parts/ContentLoading'
+import { Document } from './parts/Document'
 import { Image } from './parts/Image'
 import { Reasoning } from './parts/Reasoning'
 import { Text } from './parts/Text'
@@ -95,6 +96,10 @@ export function ChatMessageItem({
       (part): part is Extract<(typeof message.content)[number], { type: 'image' }> =>
         part.type === 'image',
     )
+    const documentParts = message.content.filter(
+      (part): part is Extract<(typeof message.content)[number], { type: 'document' }> =>
+        part.type === 'document',
+    )
     const textParts = message.content.filter(
       (part): part is Extract<(typeof message.content)[number], { type: 'text' }> =>
         part.type === 'text' && part.text.trim().length > 0,
@@ -115,18 +120,34 @@ export function ChatMessageItem({
             </div>
           ) : null}
 
-          <div className="lc-user-message-bubble rounded-2xl bg-gray-100 px-4 py-2.5 text-[14px] leading-relaxed text-gray-900 shadow-sm dark:bg-gray-800 dark:text-gray-100">
-            <div className="lc-message-content">
-              {textParts.map((part, index) => (
-                <Text
-                  key={`user-text:${message.turnId}:${index}`}
-                  text={part.text}
-                  isCreatedByUser
-                  showCursor={message.status === 'in_progress'}
+          {documentParts.length > 0 ? (
+            <div className="flex w-full max-w-[360px] flex-col items-stretch gap-2">
+              {documentParts.map((part, index) => (
+                <Document
+                  key={`user-document:${message.turnId}:${part.url}:${index}`}
+                  url={part.url}
+                  name={part.name}
+                  mimeType={part.mime_type}
+                  sizeBytes={part.size_bytes}
                 />
               ))}
             </div>
-          </div>
+          ) : null}
+
+          {textParts.length > 0 ? (
+            <div className="lc-user-message-bubble rounded-2xl bg-gray-100 px-4 py-2.5 text-[14px] leading-relaxed text-gray-900 shadow-sm dark:bg-gray-800 dark:text-gray-100">
+              <div className="lc-message-content">
+                {textParts.map((part, index) => (
+                  <Text
+                    key={`user-text:${message.turnId}:${index}`}
+                    text={part.text}
+                    isCreatedByUser
+                    showCursor={message.status === 'in_progress'}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </article>
     )

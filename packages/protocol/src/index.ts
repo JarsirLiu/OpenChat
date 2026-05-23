@@ -49,6 +49,15 @@ export interface MessageContentImage {
   alt: string
 }
 
+export interface MessageContentDocument {
+  type: 'document'
+  url: string
+  name: string
+  mime_type: string
+  size_bytes: number
+  media_id?: string | null
+}
+
 export interface ToolMedia {
   kind: string
   url: string
@@ -68,7 +77,11 @@ export interface MessageContentToolResult {
   media: ToolMedia[]
 }
 
-export type MessageContentPart = MessageContentText | MessageContentImage | MessageContentToolResult
+export type MessageContentPart =
+  | MessageContentText
+  | MessageContentImage
+  | MessageContentDocument
+  | MessageContentToolResult
 
 export interface ToolCallSummary {
   id: string

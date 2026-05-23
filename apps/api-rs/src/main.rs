@@ -1,4 +1,5 @@
 mod config;
+mod document_text;
 mod handlers;
 mod http;
 mod router;

@@ -17,6 +17,7 @@ RUN sed -i "s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|
 
 # Copy workspace manifests first so dependency resolution can be cached.
 COPY Cargo.toml Cargo.lock ./
+COPY .cargo ./.cargo
 COPY apps/api-rs/Cargo.toml apps/api-rs/Cargo.toml
 COPY apps/worker-rs/Cargo.toml apps/worker-rs/Cargo.toml
 COPY crates/security-core/Cargo.toml crates/security-core/Cargo.toml

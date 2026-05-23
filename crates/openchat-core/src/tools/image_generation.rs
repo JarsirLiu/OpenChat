@@ -1110,7 +1110,7 @@ fn find_history_media_id(reference: &str, history: &[OutboundMessage]) -> Option
                         }
                     }
                 }
-                OutboundContentPart::Text { .. } => {}
+                OutboundContentPart::Text { .. } | OutboundContentPart::Document { .. } => {}
             }
         }
     }

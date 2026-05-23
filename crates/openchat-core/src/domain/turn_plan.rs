@@ -31,6 +31,8 @@ pub struct TurnAttachment {
     pub name: String,
     pub mime_type: String,
     pub size_bytes: usize,
+    pub kind: Option<String>,
+    pub extracted_text: Option<String>,
 }
 
 #[derive(Clone)]

@@ -80,6 +80,8 @@ impl TurnBuilder for CatalogTurnBuilder {
                     name: attachment.name,
                     mime_type: attachment.mime_type,
                     size_bytes: attachment.size_bytes,
+                    kind: attachment.kind,
+                    extracted_text: attachment.extracted_text,
                 })
                 .collect(),
             history: context.history,

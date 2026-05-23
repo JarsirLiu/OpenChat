@@ -17,6 +17,14 @@ export interface RenderImagePart {
   alt: string
 }
 
+export interface RenderDocumentPart {
+  type: 'document'
+  url: string
+  name: string
+  mimeType: string
+  sizeBytes: number
+}
+
 export interface RenderToolCallGroupPart {
   type: 'tool_call_group'
   toolCalls: ToolCallSummary[]
@@ -26,9 +34,12 @@ export interface RenderToolCallGroupPart {
 export type RenderMessagePart =
   | RenderTextPart
   | RenderImagePart
+  | RenderDocumentPart
   | RenderToolCallGroupPart
 
-const mapContentPart = (part: MessageContentPart): RenderTextPart | RenderImagePart | null => {
+const mapContentPart = (
+  part: MessageContentPart,
+): RenderTextPart | RenderImagePart | RenderDocumentPart | null => {
   if (part.type === 'text') {
     return {
       type: 'text',
@@ -41,6 +52,16 @@ const mapContentPart = (part: MessageContentPart): RenderTextPart | RenderImageP
       type: 'image',
       url: part.url,
       alt: part.alt,
+    }
+  }
+
+  if (part.type === 'document') {
+    return {
+      type: 'document',
+      url: part.url,
+      name: part.name,
+      mimeType: part.mime_type,
+      sizeBytes: part.size_bytes,
     }
   }
 
