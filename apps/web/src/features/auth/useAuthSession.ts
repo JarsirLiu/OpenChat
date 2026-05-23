@@ -4,15 +4,17 @@ import {
   fetchCurrentUser,
   login,
   logout,
+  readCachedCurrentUser,
   register,
   type AuthUser,
 } from '../../lib/auth'
 
 export function useAuthSession() {
-  const [authLoading, setAuthLoading] = useState(true)
+  const [cachedUser] = useState<AuthUser | null>(() => readCachedCurrentUser())
+  const [authLoading, setAuthLoading] = useState(() => !cachedUser)
   const [authSubmitting, setAuthSubmitting] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(cachedUser)
 
   useEffect(() => {
     if (!authError) {

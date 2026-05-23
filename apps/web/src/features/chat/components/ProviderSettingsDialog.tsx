@@ -15,9 +15,17 @@ import clsx from 'clsx'
 import { AuthError, authenticatedFetch } from '../../../lib/auth'
 import { createApiError, ensureOk, toApiError } from '../../../lib/apiError'
 import type { UserCustomModel, UserProviderApiKey, UserProviderApiKeySecret } from '../types'
+import {
+  readCachedCustomModels,
+  readCachedProviderKeys,
+  writeCachedCustomModels,
+  writeCachedProviderKeys,
+} from '../settingsCache'
+import { invalidateModelCatalogCache } from '../useModelCatalog'
 
 interface ProviderSettingsDialogProps {
   isOpen: boolean
+  currentUserId: string
   onClose: () => void
   onSaved: () => Promise<void> | void
   onUnauthorized: () => void
@@ -57,6 +65,7 @@ const secretInputClassName =
 
 export function ProviderSettingsDialog({
   isOpen,
+  currentUserId,
   onClose,
   onSaved,
   onUnauthorized,
@@ -100,6 +109,22 @@ export function ProviderSettingsDialog({
       setFeedback(null)
 
       try {
+        const cachedProviders = readCachedProviderKeys(currentUserId)
+        const cachedCustomModels = readCachedCustomModels(currentUserId)
+        if (cachedProviders && cachedCustomModels) {
+          const currentSetting =
+            cachedProviders.data.find((item) => item.provider_key === DEFAULT_PROVIDER_KEY) ?? null
+          setForm({
+            apiKey: '',
+            maskedApiKey: currentSetting?.masked_api_key?.trim() ?? '',
+            hasStoredApiKey: currentSetting?.has_api_key ?? false,
+          })
+          setCustomModels(cachedCustomModels.data)
+          if (cachedProviders.fresh && cachedCustomModels.fresh) {
+            return
+          }
+        }
+
         const [providerResponse, customModelsResponse] = await Promise.all([
           authenticatedFetch('/api/user-provider-api-keys'),
           authenticatedFetch('/api/custom-models'),
@@ -130,6 +155,8 @@ export function ProviderSettingsDialog({
           hasStoredApiKey: currentSetting?.has_api_key ?? false,
         })
         setCustomModels(customPayload)
+        writeCachedProviderKeys(currentUserId, providerPayload)
+        writeCachedCustomModels(currentUserId, customPayload)
       } catch (error) {
         if (error instanceof AuthError && error.status === 401) {
           onUnauthorized()
@@ -154,7 +181,7 @@ export function ProviderSettingsDialog({
     return () => {
       active = false
     }
-  }, [isOpen, onUnauthorized])
+  }, [currentUserId, isOpen, onUnauthorized])
 
   useEffect(() => {
     if (!modelTypeMenuOpen) return
@@ -286,6 +313,16 @@ export function ProviderSettingsDialog({
       }), 'Failed to save API key')
 
       const payload = (await response.json()) as UserProviderApiKey
+      const cachedProviders = readCachedProviderKeys(currentUserId)?.data ?? []
+      const nextProviders = cachedProviders.some(
+        (item) => item.provider_key === payload.provider_key,
+      )
+        ? cachedProviders.map((item) =>
+            item.provider_key === payload.provider_key ? payload : item,
+          )
+        : [...cachedProviders, payload]
+      writeCachedProviderKeys(currentUserId, nextProviders)
+      invalidateModelCatalogCache(currentUserId)
       setForm((current) => ({
         ...current,
         apiKey: current.apiKey.trim(),
@@ -343,7 +380,12 @@ export function ProviderSettingsDialog({
       }), 'Failed to create custom model')
 
       const payload = (await response.json()) as UserCustomModel
-      setCustomModels((current) => [...current, payload])
+      setCustomModels((current) => {
+        const next = [...current, payload]
+        writeCachedCustomModels(currentUserId, next)
+        return next
+      })
+      invalidateModelCatalogCache(currentUserId)
       setDraft((current) => ({ ...current, modelName: '', apiKey: '' }))
       setFeedback({
         type: 'success',
@@ -376,9 +418,12 @@ export function ProviderSettingsDialog({
         },
       ), 'Failed to delete custom model')
 
-      setCustomModels((current) =>
-        current.filter((item) => item.model_config_id !== modelConfigId),
-      )
+      setCustomModels((current) => {
+        const next = current.filter((item) => item.model_config_id !== modelConfigId)
+        writeCachedCustomModels(currentUserId, next)
+        return next
+      })
+      invalidateModelCatalogCache(currentUserId)
       setFeedback({
         type: 'success',
         message: '自定义模型已删除',

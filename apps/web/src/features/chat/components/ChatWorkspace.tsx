@@ -7,16 +7,23 @@ import { ChatWorkspaceMobile } from './ChatWorkspaceMobile'
 import { RenameSessionDialog } from './ChatWorkspaceShared'
 import { useChatWorkspace } from '../useChatWorkspace'
 import type { UserProviderApiKey } from '../types'
+import { readCachedProviderKeys, writeCachedProviderKeys } from '../settingsCache'
 
 const DEFAULT_PROVIDER_KEY = 'openai'
 
-async function loadDefaultProviderApiKeyStatus() {
+async function loadDefaultProviderApiKeyStatus(currentUserId: string) {
+  const cached = readCachedProviderKeys(currentUserId)
+  if (cached?.fresh) {
+    return cached.data.find((item) => item.provider_key === DEFAULT_PROVIDER_KEY)?.has_api_key ?? false
+  }
+
   const response = await authenticatedFetch('/api/user-provider-api-keys')
   if (!response.ok) {
     return null
   }
 
   const payload = (await response.json()) as UserProviderApiKey[]
+  writeCachedProviderKeys(currentUserId, payload)
   return payload.find((item) => item.provider_key === DEFAULT_PROVIDER_KEY)?.has_api_key ?? false
 }
 
@@ -112,7 +119,7 @@ export function ChatWorkspace({
 
     const syncInitialSettingsState = async () => {
       try {
-        const hasDefaultProviderApiKey = await loadDefaultProviderApiKeyStatus()
+        const hasDefaultProviderApiKey = await loadDefaultProviderApiKeyStatus(currentUser.id)
 
         if (!active || hasDefaultProviderApiKey === null) {
           return
@@ -135,7 +142,7 @@ export function ChatWorkspace({
     return () => {
       active = false
     }
-  }, [onUnauthorized])
+  }, [currentUser.id, onUnauthorized])
 
   useEffect(() => {
     const container = scrollRef.current
@@ -302,6 +309,7 @@ export function ChatWorkspace({
           />
           <ProviderSettingsDialog
             isOpen={settingsOpen}
+            currentUserId={currentUser.id}
             onClose={() => setSettingsOpen(false)}
             onSaved={refreshCatalog}
             onUnauthorized={onUnauthorized}
@@ -328,6 +336,7 @@ export function ChatWorkspace({
           settingsPanel={
             <ProviderSettingsDialog
               isOpen={settingsOpen}
+              currentUserId={currentUser.id}
               onClose={() => setSettingsOpen(false)}
               onSaved={refreshCatalog}
               onUnauthorized={onUnauthorized}

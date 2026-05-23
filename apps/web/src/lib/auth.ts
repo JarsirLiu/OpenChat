@@ -1,4 +1,5 @@
 import { ApiError, createApiError } from './apiError'
+import { clearLocalApiCache, readLocalApiCache, writeLocalApiCache } from './localApiCache'
 
 export interface AuthUser {
   id: string
@@ -29,6 +30,9 @@ export class AuthError extends ApiError {
 let refreshInFlight: Promise<void> | null = null
 let csrfToken: string | null = null
 
+const AUTH_USER_CACHE_KEY = 'auth:me'
+const AUTH_USER_CACHE_TTL_MS = 30_000
+
 function isUnsafeMethod(method?: string) {
   const normalized = (method ?? 'GET').toUpperCase()
   return normalized !== 'GET' && normalized !== 'HEAD' && normalized !== 'OPTIONS' && normalized !== 'TRACE'
@@ -36,6 +40,7 @@ function isUnsafeMethod(method?: string) {
 
 export const clearAuthData = () => {
   csrfToken = null
+  clearLocalApiCache()
 }
 
 async function ensureCsrfToken(forceRefresh = false) {
@@ -100,7 +105,9 @@ export async function login(account: string, password: string) {
       method: 'POST',
       body: JSON.stringify({ account, password }),
     })
-    return await parseUserResponse(response, 'Login failed')
+    const user = await parseUserResponse(response, 'Login failed')
+    writeLocalApiCache(user.id, AUTH_USER_CACHE_KEY, user)
+    return user
   } catch (error) {
     if (error instanceof AuthError) {
       throw error
@@ -116,7 +123,9 @@ export async function register(email: string, password: string, username?: strin
       method: 'POST',
       body: JSON.stringify({ email, password, username }),
     })
-    return await parseUserResponse(response, 'Registration failed')
+    const user = await parseUserResponse(response, 'Registration failed')
+    writeLocalApiCache(user.id, AUTH_USER_CACHE_KEY, user)
+    return user
   } catch (error) {
     if (error instanceof AuthError) {
       throw error
@@ -158,7 +167,39 @@ export async function fetchCurrentUser() {
   }
 
   const payload = (await response.json()) as UserInfoResponse
+  writeLocalApiCache(payload.user_info.id, AUTH_USER_CACHE_KEY, payload.user_info)
   return payload.user_info
+}
+
+export function readCachedCurrentUser() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+    const key = window.localStorage.key(index)
+    if (!key || !key.includes(`:${AUTH_USER_CACHE_KEY}`)) {
+      continue
+    }
+
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(key) ?? '{}') as {
+        userId?: string
+      }
+      const cached = readLocalApiCache<AuthUser>(
+        parsed.userId,
+        AUTH_USER_CACHE_KEY,
+        AUTH_USER_CACHE_TTL_MS,
+      )
+      if (cached?.fresh) {
+        return cached.data
+      }
+    } catch {
+      window.localStorage.removeItem(key)
+    }
+  }
+
+  return null
 }
 
 export async function logout() {

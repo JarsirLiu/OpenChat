@@ -5,6 +5,10 @@ use axum::{
     response::IntoResponse,
 };
 use serde::Deserialize;
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
 
 use crate::{
     http::errors::{
@@ -23,6 +27,7 @@ pub struct MediaAccessQuery {
 pub async fn get_media(
     State(state): State<AppState>,
     MaybeCurrentUser(auth): MaybeCurrentUser,
+    request_headers: HeaderMap,
     Path(path): Path<String>,
     Query(query): Query<MediaAccessQuery>,
 ) -> impl IntoResponse {
@@ -81,6 +86,17 @@ pub async fn get_media(
         return error_response(StatusCode::NOT_FOUND, MEDIA_NOT_FOUND, "Media not found");
     };
 
+    let mut etag_hasher = DefaultHasher::new();
+    path.hash(&mut etag_hasher);
+    media.size_bytes.hash(&mut etag_hasher);
+    media.content_type.hash(&mut etag_hasher);
+    let etag = format!("\"{:x}\"", etag_hasher.finish());
+    let cache_control = if browser_authorized {
+        "private, max-age=86400, immutable"
+    } else {
+        "private, max-age=900"
+    };
+
     let mut headers = HeaderMap::new();
     if let Ok(value) = header::HeaderValue::from_str(media.content_type.as_str()) {
         headers.insert(header::CONTENT_TYPE, value);
@@ -88,10 +104,23 @@ pub async fn get_media(
     if let Ok(value) = header::HeaderValue::from_str(media.size_bytes.to_string().as_str()) {
         headers.insert(header::CONTENT_LENGTH, value);
     }
-    headers.insert(
-        header::CACHE_CONTROL,
-        header::HeaderValue::from_static("private, max-age=3600"),
-    );
+    if let Ok(value) = header::HeaderValue::from_str(etag.as_str()) {
+        headers.insert(header::ETAG, value);
+    }
+    if let Ok(value) = header::HeaderValue::from_str(cache_control) {
+        headers.insert(header::CACHE_CONTROL, value);
+    }
+
+    let not_modified = request_headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.split(',').any(|candidate| candidate.trim() == etag))
+        .unwrap_or(false);
+    if not_modified {
+        headers.remove(header::CONTENT_LENGTH);
+        headers.remove(header::CONTENT_TYPE);
+        return (StatusCode::NOT_MODIFIED, headers, Body::empty()).into_response();
+    }
 
     (StatusCode::OK, headers, Body::from(media.bytes)).into_response()
 }

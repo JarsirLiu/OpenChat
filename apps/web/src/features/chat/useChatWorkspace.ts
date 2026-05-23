@@ -8,6 +8,7 @@ import {
 import { type ChatStreamEvent, type ThreadTurn } from '@openchat/protocol'
 import type { AuthUser } from '../../lib/auth'
 import { authenticatedFetch } from '../../lib/auth'
+import { writeLocalApiCache } from '../../lib/localApiCache'
 import { ApiError, API_ERROR_CODES, CLIENT_ERROR_CODES, ensureOk, toApiError } from '../../lib/apiError'
 import { buildChatRequest } from './request'
 import {
@@ -15,7 +16,7 @@ import {
   ensureSessionPreference,
   updateSessionPreference,
 } from './sessionPreferences'
-import { useChatStream } from './useChatStream'
+import { sessionDetailCacheKey, useChatStream } from './useChatStream'
 import {
   filterSupportedAttachmentFiles,
   filterSupportedImageFiles,
@@ -329,6 +330,7 @@ export function useChatWorkspace({
   }, [upsertSession])
 
   const { historyHasMore, historyLoading, loadOlderHistory } = useChatStream({
+    currentUserId: currentUser.id,
     sessionId,
     enabled: Boolean(activeSessionId && currentSession),
     onHydrateTurns: handleHydrateTurns,
@@ -336,6 +338,32 @@ export function useChatWorkspace({
     onHydrateSession: handleHydrateSession,
     onEvent: handleStreamEvent,
   })
+
+  useEffect(() => {
+    if (!activeSessionId || !currentSession) {
+      return
+    }
+
+    const activeTurns = runtimeV2State.turns.filter((turn) => turn.sessionId === activeSessionId)
+    if (activeTurns.length === 0) {
+      return
+    }
+
+    writeLocalApiCache(currentUser.id, sessionDetailCacheKey(activeSessionId), {
+      session: {
+        id: currentSession.id,
+        title: currentSession.title,
+        status: currentSession.status,
+        createdAt: currentSession.createdAt,
+        updatedAt: currentSession.updatedAt,
+      },
+      turns: activeTurns,
+      historyPage: {
+        hasMore: historyHasMore,
+        nextBeforeTurnId: null,
+      },
+    })
+  }, [activeSessionId, currentSession, currentUser.id, historyHasMore, runtimeV2State.turns])
 
   useEffect(() => {
     const storedPreferences = ensureSessionPreference(currentUser.id, sessionId)

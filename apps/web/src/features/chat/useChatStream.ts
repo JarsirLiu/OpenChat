@@ -3,10 +3,12 @@ import { fetchEventSource } from '@microsoft/fetch-event-source'
 import type { ChatStreamEvent, ThreadTurn } from '@openchat/protocol'
 import { normalizeStreamEvent } from '@openchat/protocol'
 import { authenticatedFetch } from '../../lib/auth'
+import { readLocalApiCache, writeLocalApiCache } from '../../lib/localApiCache'
 import type { SessionListItem } from './useSessions'
 import { normalizeSessionTurns } from './threadItems'
 
 interface UseChatStreamParams {
+  currentUserId: string
   sessionId: string
   enabled: boolean
   onHydrateTurns?: (turns: ThreadTurn[]) => void
@@ -14,6 +16,9 @@ interface UseChatStreamParams {
   onHydrateSession: (session: SessionListItem | null) => void
   onEvent: (event: ChatStreamEvent) => void
 }
+
+const SESSION_DETAIL_CACHE_TTL_MS = 10_000
+export const sessionDetailCacheKey = (sessionId: string) => `chat:session:${sessionId}`
 
 interface SessionDetailResponse {
   session?: {
@@ -55,6 +60,7 @@ const normalizeSession = (value: SessionDetailResponse['session']): SessionListI
 }
 
 export function useChatStream({
+  currentUserId,
   sessionId,
   enabled,
   onHydrateTurns,
@@ -128,6 +134,21 @@ export function useChatStream({
 
     void (async () => {
       try {
+        const cached = readLocalApiCache<SessionDetailResponse>(
+          currentUserId,
+          sessionDetailCacheKey(sessionId),
+          SESSION_DETAIL_CACHE_TTL_MS,
+        )
+        if (cached && active) {
+          handleHydrateSession(normalizeSession(cached.data.session))
+          handleHydrateTurns(normalizeSessionTurns(cached.data.turns as never))
+          nextBeforeTurnIdRef.current =
+            typeof cached.data.historyPage?.nextBeforeTurnId === 'string'
+              ? cached.data.historyPage.nextBeforeTurnId
+              : null
+          setHistoryHasMore(Boolean(cached.data.historyPage?.hasMore))
+        }
+
         const response = await authenticatedFetch(`/api/sessions/${sessionId}`)
         if (!response.ok) {
           return
@@ -140,6 +161,7 @@ export function useChatStream({
 
         handleHydrateSession(normalizeSession(payload.session))
         handleHydrateTurns(normalizeSessionTurns(payload.turns as never))
+        writeLocalApiCache(currentUserId, sessionDetailCacheKey(sessionId), payload)
         nextBeforeTurnIdRef.current =
           typeof payload.historyPage?.nextBeforeTurnId === 'string'
             ? payload.historyPage.nextBeforeTurnId
@@ -214,7 +236,7 @@ export function useChatStream({
       bootstrapping = false
       abortController.abort()
     }
-  }, [enabled, sessionId])
+  }, [currentUserId, enabled, sessionId])
 
   return {
     historyHasMore,

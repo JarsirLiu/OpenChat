@@ -1,11 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AuthError, authenticatedFetch } from '../../lib/auth'
 import { ApiError, createApiError, toApiError } from '../../lib/apiError'
+import { readLocalApiCache, removeLocalApiCache, writeLocalApiCache } from '../../lib/localApiCache'
 import { resolveModelIconKey } from './modelIcon'
 import { imageToolKeyOf, readSessionPreferences } from './sessionPreferences'
 import type { CatalogModel, CatalogTool, ModelMenuItem } from './types'
 
 const DEFAULT_TEXT_MODEL_ID = 'openchat:gpt-5.4'
+const MODEL_CATALOG_CACHE_KEY = 'chat:model-catalog'
+const MODEL_CATALOG_CACHE_TTL_MS = 60_000
+
+interface ModelCatalogCachePayload {
+  textModels: CatalogModel[]
+  imageTools: CatalogTool[]
+}
+
+export const invalidateModelCatalogCache = (userId: string | null | undefined) => {
+  removeLocalApiCache(userId, MODEL_CATALOG_CACHE_KEY)
+}
 
 const compareTextModels = (left: CatalogModel, right: CatalogModel) => {
   const leftIsGpt = left.model.toLowerCase().startsWith('gpt')
@@ -48,12 +60,69 @@ export function useModelCatalog({
     setSelectedImageToolKey(readSessionPreferences(currentUserId)[sessionId]?.imageToolKey ?? null)
   }, [currentUserId, sessionId])
 
+  const applyCatalog = (nextTextModels: CatalogModel[], nextImageTools: CatalogTool[]) => {
+    setTextModels(nextTextModels)
+    setImageTools(nextImageTools)
+
+    setSelectedTextModelId((current) => {
+      const sessionPreference =
+        readSessionPreferences(currentUserId)[sessionId]?.textModelId ?? null
+      const currentId =
+        current ||
+        sessionPreference ||
+        import.meta.env.VITE_DEFAULT_TEXT_MODEL_ID ||
+        DEFAULT_TEXT_MODEL_ID ||
+        nextTextModels[0]?.model_config_id ||
+        null
+      if (nextTextModels.some((model) => model.model_config_id === currentId)) {
+        return currentId
+      }
+
+      if (
+        DEFAULT_TEXT_MODEL_ID &&
+        nextTextModels.some((model) => model.model_config_id === DEFAULT_TEXT_MODEL_ID)
+      ) {
+        return DEFAULT_TEXT_MODEL_ID
+      }
+
+      return nextTextModels[0]?.model_config_id ?? null
+    })
+
+    setSelectedImageToolKey((current) => {
+      const sessionPreference =
+        readSessionPreferences(currentUserId)[sessionId]?.imageToolKey ?? null
+      const envKey =
+        import.meta.env.VITE_DEFAULT_IMAGE_TOOL_ID &&
+        import.meta.env.VITE_DEFAULT_IMAGE_TOOL_CONFIG_ID
+          ? `${import.meta.env.VITE_DEFAULT_IMAGE_TOOL_ID}::${import.meta.env.VITE_DEFAULT_IMAGE_TOOL_CONFIG_ID}`
+          : null
+      const currentKey = current || sessionPreference || envKey
+      return currentKey && nextImageTools.some((tool) => imageToolKeyOf(tool) === currentKey)
+        ? currentKey
+        : null
+    })
+  }
+
   const loadCatalog = async () => {
     if (!currentUserId) {
       setLoading(false)
       setTextModels([])
       setImageTools([])
       return
+    }
+
+    const cached = readLocalApiCache<ModelCatalogCachePayload>(
+      currentUserId,
+      MODEL_CATALOG_CACHE_KEY,
+      MODEL_CATALOG_CACHE_TTL_MS,
+    )
+    if (cached) {
+      applyCatalog(cached.data.textModels, cached.data.imageTools)
+      if (cached.fresh) {
+        setLoading(false)
+        setError(null)
+        return
+      }
     }
 
     setLoading(true)
@@ -84,45 +153,10 @@ export function useModelCatalog({
         .filter((tool) => tool.type === 'image')
         .sort(compareImageTools)
 
-      setTextModels(nextTextModels)
-      setImageTools(nextImageTools)
-
-      setSelectedTextModelId((current) => {
-        const sessionPreference =
-          readSessionPreferences(currentUserId)[sessionId]?.textModelId ?? null
-        const currentId =
-          current ||
-          sessionPreference ||
-          import.meta.env.VITE_DEFAULT_TEXT_MODEL_ID ||
-          DEFAULT_TEXT_MODEL_ID ||
-          nextTextModels[0]?.model_config_id ||
-          null
-        if (nextTextModels.some((model) => model.model_config_id === currentId)) {
-          return currentId
-        }
-
-        if (
-          DEFAULT_TEXT_MODEL_ID &&
-          nextTextModels.some((model) => model.model_config_id === DEFAULT_TEXT_MODEL_ID)
-        ) {
-          return DEFAULT_TEXT_MODEL_ID
-        }
-
-        return nextTextModels[0]?.model_config_id ?? null
-      })
-
-      setSelectedImageToolKey((current) => {
-        const sessionPreference =
-          readSessionPreferences(currentUserId)[sessionId]?.imageToolKey ?? null
-        const envKey =
-          import.meta.env.VITE_DEFAULT_IMAGE_TOOL_ID &&
-          import.meta.env.VITE_DEFAULT_IMAGE_TOOL_CONFIG_ID
-            ? `${import.meta.env.VITE_DEFAULT_IMAGE_TOOL_ID}::${import.meta.env.VITE_DEFAULT_IMAGE_TOOL_CONFIG_ID}`
-            : null
-        const currentKey = current || sessionPreference || envKey
-        return currentKey && nextImageTools.some((tool) => imageToolKeyOf(tool) === currentKey)
-          ? currentKey
-          : null
+      applyCatalog(nextTextModels, nextImageTools)
+      writeLocalApiCache(currentUserId, MODEL_CATALOG_CACHE_KEY, {
+        textModels: nextTextModels,
+        imageTools: nextImageTools,
       })
     } catch (error) {
       if (error instanceof AuthError && error.status === 401) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { authenticatedFetch, AuthError } from '../../lib/auth'
 import { ApiError, ensureOk, toApiError } from '../../lib/apiError'
+import { readLocalApiCache, removeLocalApiCache, writeLocalApiCache } from '../../lib/localApiCache'
 
 export interface SessionListItem {
   id: string
@@ -9,6 +10,9 @@ export interface SessionListItem {
   createdAt: string
   updatedAt: string
 }
+
+const SESSIONS_CACHE_KEY = 'chat:sessions'
+const SESSIONS_CACHE_TTL_MS = 15_000
 
 export function useSessions(currentUserId: string | null, onUnauthorized: () => void) {
   const [sessions, setSessions] = useState<SessionListItem[]>([])
@@ -26,6 +30,19 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
         return
       }
 
+      const cached = readLocalApiCache<SessionListItem[]>(
+        currentUserId,
+        SESSIONS_CACHE_KEY,
+        SESSIONS_CACHE_TTL_MS,
+      )
+      if (cached) {
+        setSessions(cached.data)
+        if (cached.fresh) {
+          setLoading(false)
+          return
+        }
+      }
+
       setLoading(true)
       setError(null)
       try {
@@ -38,6 +55,7 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
           return
         }
         setSessions(payload)
+        writeLocalApiCache(currentUserId, SESSIONS_CACHE_KEY, payload)
       } catch (error) {
         if (!active) {
           return
@@ -64,16 +82,19 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
     setSessions((current) => {
       const existingIndex = current.findIndex((session) => session.id === nextSession.id)
       if (existingIndex < 0) {
-        return [nextSession, ...current]
+        const next = [nextSession, ...current]
+        writeLocalApiCache(currentUserId, SESSIONS_CACHE_KEY, next)
+        return next
       }
 
       const merged = current.map((session, index) =>
         index === existingIndex ? nextSession : session,
       )
 
+      writeLocalApiCache(currentUserId, SESSIONS_CACHE_KEY, merged)
       return merged
     })
-  }, [])
+  }, [currentUserId])
 
   const refresh = useCallback(async () => {
     if (!currentUserId) {
@@ -92,6 +113,7 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
       )
       const payload = (await response.json()) as SessionListItem[]
       setSessions(payload)
+      writeLocalApiCache(currentUserId, SESSIONS_CACHE_KEY, payload)
     } catch (error) {
       if (error instanceof AuthError && error.status === 401) {
         onUnauthorized()
@@ -108,8 +130,13 @@ export function useSessions(currentUserId: string | null, onUnauthorized: () => 
       method: 'DELETE',
     }), 'Failed to delete session')
 
-    setSessions((current) => current.filter((session) => session.id !== sessionId))
-  }, [])
+    removeLocalApiCache(currentUserId, `chat:session:${sessionId}`)
+    setSessions((current) => {
+      const next = current.filter((session) => session.id !== sessionId)
+      writeLocalApiCache(currentUserId, SESSIONS_CACHE_KEY, next)
+      return next
+    })
+  }, [currentUserId])
 
   const renameSession = useCallback(async (sessionId: string, title: string) => {
     const response = await ensureOk(await authenticatedFetch(`/api/sessions/${sessionId}`, {
