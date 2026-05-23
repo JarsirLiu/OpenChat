@@ -1160,7 +1160,32 @@ impl ChatStore {
                             ELSE status
                         END
                     ),
-                    updated_at = ?3
+                    updated_at = (
+                        CASE
+                            WHEN status != (
+                                CASE
+                                    WHEN EXISTS (
+                                        SELECT 1 FROM turns
+                                        WHERE session_id = ?1 AND user_id = ?2 AND status = 'running'
+                                    ) THEN 'running'
+                                    WHEN EXISTS (
+                                        SELECT 1 FROM turns
+                                        WHERE session_id = ?1 AND user_id = ?2 AND status = 'failed'
+                                    ) THEN 'failed'
+                                    WHEN EXISTS (
+                                        SELECT 1 FROM turns
+                                        WHERE session_id = ?1 AND user_id = ?2 AND status = 'interrupted'
+                                    ) THEN 'interrupted'
+                                    WHEN EXISTS (
+                                        SELECT 1 FROM turns
+                                        WHERE session_id = ?1 AND user_id = ?2 AND status = 'completed'
+                                    ) THEN 'completed'
+                                    ELSE status
+                                END
+                            ) THEN ?3
+                            ELSE updated_at
+                        END
+                    )
                     WHERE id = ?1 AND user_id = ?2
                     "#,
                 )
@@ -1229,7 +1254,32 @@ impl ChatStore {
                             ELSE status
                         END
                     ),
-                    updated_at = $3
+                    updated_at = (
+                        CASE
+                            WHEN status != (
+                                CASE
+                                    WHEN EXISTS (
+                                        SELECT 1 FROM turns
+                                        WHERE session_id = $1 AND user_id = $2 AND status = 'running'
+                                    ) THEN 'running'
+                                    WHEN EXISTS (
+                                        SELECT 1 FROM turns
+                                        WHERE session_id = $1 AND user_id = $2 AND status = 'failed'
+                                    ) THEN 'failed'
+                                    WHEN EXISTS (
+                                        SELECT 1 FROM turns
+                                        WHERE session_id = $1 AND user_id = $2 AND status = 'interrupted'
+                                    ) THEN 'interrupted'
+                                    WHEN EXISTS (
+                                        SELECT 1 FROM turns
+                                        WHERE session_id = $1 AND user_id = $2 AND status = 'completed'
+                                    ) THEN 'completed'
+                                    ELSE status
+                                END
+                            ) THEN $3
+                            ELSE updated_at
+                        END
+                    )
                     WHERE id = $1 AND user_id = $2
                     "#,
                 )
