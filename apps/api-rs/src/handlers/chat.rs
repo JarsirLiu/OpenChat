@@ -121,11 +121,35 @@ async fn normalize_attachments(
         match owner.as_deref() {
             Some(owner_user_id) if owner_user_id == user_id => {
                 attachment.url = state.media_store.browser_media_url(attachment.id.as_str());
+                if !attachment.mime_type.starts_with("image/") {
+                    let media = state
+                        .media_store
+                        .get_bytes(attachment.id.as_str())
+                        .await
+                        .map_err(|error| {
+                            ErrorResponseDto::from_code(VALIDATION_ERROR, error.to_string())
+                        })?
+                        .ok_or_else(|| {
+                            ErrorResponseDto::from_code(
+                                VALIDATION_ERROR,
+                                "Uploaded document could not be found",
+                            )
+                        })?;
+
+                    attachment.mime_type = media.content_type.clone();
+                    attachment.size_bytes = media.size_bytes;
+                    attachment.extracted_text = crate::document_text::extract_supported_document_text(
+                        media.bytes.as_slice(),
+                        attachment.mime_type.as_str(),
+                        attachment.name.as_str(),
+                    )
+                    .map_err(|error| ErrorResponseDto::from_code(VALIDATION_ERROR, error))?;
+                }
             }
             _ => {
                 return Err(ErrorResponseDto::from_code(
                     ATTACHMENT_ACCESS_DENIED,
-                    "One or more uploaded images do not belong to the current user",
+                    "One or more uploaded attachments do not belong to the current user",
                 ));
             }
         }
