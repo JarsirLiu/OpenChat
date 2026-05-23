@@ -16,7 +16,7 @@ services:
         required: false
     volumes:
       - ./scripts:/scripts:ro
-      - ./nginx/ssl:/acme-certs
+      - ${OPENCHAT_SSL_DIR:-./nginx/ssl}:/acme-certs
       - ./nginx/acme:/var/www/acme
       - acme_data:/acme-data
     entrypoint: ["/bin/sh", "/scripts/acme-init.sh"]
@@ -35,7 +35,7 @@ services:
         required: false
     volumes:
       - ./scripts:/scripts:ro
-      - ./nginx/ssl:/acme-certs
+      - ${OPENCHAT_SSL_DIR:-./nginx/ssl}:/acme-certs
       - ./nginx/acme:/var/www/acme
       - acme_data:/acme-data
     entrypoint: ["/bin/sh", "/scripts/acme-renew.sh"]
@@ -115,7 +115,7 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./nginx/snippets:/etc/nginx/snippets:ro
-      - ./nginx/ssl:/etc/nginx/ssl
+      - ${OPENCHAT_SSL_DIR:-./nginx/ssl}:/etc/nginx/ssl
       - ./nginx/acme:/var/www/acme
     logging: *default-logging
     restart: unless-stopped
