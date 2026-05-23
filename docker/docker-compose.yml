@@ -130,7 +130,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-openchat}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-openchat123456}
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - ${OPENCHAT_DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openchat} -d ${POSTGRES_DB:-openchat}"]
       interval: 10s
@@ -149,7 +149,7 @@ services:
       - MINIO_ROOT_USER=${OPENCHAT_S3_ACCESS_KEY_ID:-minioadmin}
       - MINIO_ROOT_PASSWORD=${OPENCHAT_S3_SECRET_ACCESS_KEY:-minioadmin}
     volumes:
-      - ./data/minio:/data
+      - ${OPENCHAT_DATA_DIR:-./data}/minio:/data
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
