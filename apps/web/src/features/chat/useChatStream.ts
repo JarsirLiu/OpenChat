@@ -140,7 +140,6 @@ export function useChatStream({
           SESSION_DETAIL_CACHE_TTL_MS,
         )
         if (cached && active) {
-          handleHydrateSession(normalizeSession(cached.data.session))
           handleHydrateTurns(normalizeSessionTurns(cached.data.turns as never))
           nextBeforeTurnIdRef.current =
             typeof cached.data.historyPage?.nextBeforeTurnId === 'string'

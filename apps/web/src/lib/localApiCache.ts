@@ -1,4 +1,4 @@
-const CACHE_PREFIX = 'openchat:api-cache:v1'
+const CACHE_PREFIX = 'openchat:api-cache:v2'
 
 interface CacheEnvelope<T> {
   version: 1
