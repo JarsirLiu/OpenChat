@@ -24,6 +24,7 @@ const SUPPORTED_DOCUMENT_MIME_TYPES: &[&str] = &[
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 const MAX_UPLOAD_BYTES: usize = 20 * 1024 * 1024;
+const MAX_FILES_PER_UPLOAD: usize = 8;
 
 pub async fn upload_images(
     State(state): State<AppState>,
@@ -69,6 +70,17 @@ async fn upload_multipart(
                 .into_response()
         }
     } {
+        if index >= MAX_FILES_PER_UPLOAD {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponseDto::from_code(
+                    UPLOAD_PAYLOAD_INVALID,
+                    format!("一次最多上传 {MAX_FILES_PER_UPLOAD} 个文件"),
+                )),
+            )
+                .into_response();
+        }
+
         let file_name = field.file_name().unwrap_or("image.png").to_string();
         let mime_type = field
             .content_type()

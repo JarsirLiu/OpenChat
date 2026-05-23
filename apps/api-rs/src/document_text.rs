@@ -2,7 +2,8 @@ use std::io::{Cursor, Read};
 
 use quick_xml::{events::Event, Reader};
 
-const MAX_EXTRACTED_TEXT_CHARS: usize = 60_000;
+pub const MAX_EXTRACTED_TEXT_CHARS: usize = 20_000;
+pub const MAX_TOTAL_DOCUMENT_CONTEXT_CHARS: usize = 40_000;
 
 pub fn extract_supported_document_text(
     bytes: &[u8],
@@ -38,9 +39,19 @@ pub fn extract_supported_document_text(
         if normalized.is_empty() {
             None
         } else {
-            Some(truncate_chars(normalized.as_str(), MAX_EXTRACTED_TEXT_CHARS))
+            Some(truncate_document_text(normalized.as_str(), MAX_EXTRACTED_TEXT_CHARS))
         }
     }))
+}
+
+pub fn truncate_document_text(text: &str, max_chars: usize) -> String {
+    let mut chars = text.chars();
+    let truncated = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{truncated}\n\n[内容过长，已截断]")
+    } else {
+        truncated
+    }
 }
 
 fn extract_utf8_text(bytes: &[u8]) -> Result<String, String> {
@@ -115,19 +126,9 @@ fn normalize_text(text: &str) -> String {
         .join("\n")
 }
 
-fn truncate_chars(text: &str, max_chars: usize) -> String {
-    let mut chars = text.chars();
-    let truncated = chars.by_ref().take(max_chars).collect::<String>();
-    if chars.next().is_some() {
-        format!("{truncated}\n\n[内容过长，已截断]")
-    } else {
-        truncated
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::extract_supported_document_text;
+    use super::{extract_supported_document_text, truncate_document_text, MAX_EXTRACTED_TEXT_CHARS};
 
     #[test]
     fn extracts_plain_text_uploads() {
@@ -146,5 +147,23 @@ mod tests {
                 .expect("unsupported files should not fail");
 
         assert!(extracted.is_none());
+    }
+
+    #[test]
+    fn truncates_large_text_uploads() {
+        let input = "a".repeat(MAX_EXTRACTED_TEXT_CHARS + 1);
+        let extracted = extract_supported_document_text(input.as_bytes(), "text/plain", "note.txt")
+            .expect("text extraction should succeed")
+            .expect("text should be extracted");
+
+        assert!(extracted.ends_with("[内容过长，已截断]"));
+        assert!(extracted.chars().count() > MAX_EXTRACTED_TEXT_CHARS);
+    }
+
+    #[test]
+    fn can_apply_smaller_context_window() {
+        let truncated = truncate_document_text("abcdef", 3);
+
+        assert_eq!(truncated, "abc\n\n[内容过长，已截断]");
     }
 }

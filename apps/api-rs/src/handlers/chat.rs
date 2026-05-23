@@ -10,6 +10,7 @@ use axum::{
 use openchat_core::protocol::ChatEventEnvelope;
 
 use crate::{
+    document_text::{truncate_document_text, MAX_TOTAL_DOCUMENT_CONTEXT_CHARS},
     http::{
         chat::{ChatAcceptedResponseDto, ChatRequestDto, SelectedTextModelDto, SelectedToolDto},
         errors::{
@@ -20,6 +21,8 @@ use crate::{
     security::extractors::CurrentUser,
     state::AppState,
 };
+
+const MAX_ATTACHMENTS_PER_TURN: usize = 8;
 
 async fn validate_text_model_selection(
     state: &AppState,
@@ -111,6 +114,15 @@ async fn normalize_attachments(
         return Ok(());
     };
 
+    if attachments.len() > MAX_ATTACHMENTS_PER_TURN {
+        return Err(ErrorResponseDto::from_code(
+            VALIDATION_ERROR,
+            format!("单次消息最多携带 {MAX_ATTACHMENTS_PER_TURN} 个附件"),
+        ));
+    }
+
+    let mut remaining_document_context_chars = MAX_TOTAL_DOCUMENT_CONTEXT_CHARS;
+
     for attachment in attachments.iter_mut() {
         let owner = state
             .media_store
@@ -144,6 +156,20 @@ async fn normalize_attachments(
                         attachment.name.as_str(),
                     )
                     .map_err(|error| ErrorResponseDto::from_code(VALIDATION_ERROR, error))?;
+                    if let Some(text) = attachment.extracted_text.as_deref() {
+                        if remaining_document_context_chars == 0 {
+                            attachment.extracted_text =
+                                Some("[本轮文档内容超出总上下文限制，已省略]".to_string());
+                        } else {
+                            let capped =
+                                truncate_document_text(text, remaining_document_context_chars);
+                            remaining_document_context_chars =
+                                remaining_document_context_chars.saturating_sub(
+                                    capped.chars().count().min(remaining_document_context_chars),
+                                );
+                            attachment.extracted_text = Some(capped);
+                        }
+                    }
                 }
             }
             _ => {
