@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from 'react'
-import { ArrowUp, Check, ChevronDown, FileText, ImagePlus, Plus, Search, Square, X } from 'lucide-react'
+import { ArrowUp, Check, ChevronDown, FileText, ImagePlus, LoaderCircle, Plus, Search, Square, X } from 'lucide-react'
 import clsx from 'clsx'
 import {
   filterSupportedAttachmentFiles,
@@ -41,6 +41,8 @@ export function ChatComposer({
   imageToolLoading,
   modelLoading,
   attachments,
+  attachmentsUploading,
+  attachmentError,
   canUploadImages,
   onChange,
   onClearImageTool,
@@ -66,6 +68,8 @@ export function ChatComposer({
   imageToolLoading: boolean
   modelLoading: boolean
   attachments: UploadedImageAttachment[]
+  attachmentsUploading: boolean
+  attachmentError: string | null
   canUploadImages: boolean
   onChange: (value: string) => void
   onClearImageTool: () => void
@@ -161,6 +165,68 @@ export function ChatComposer({
     ? null
     : '当前模型不支持图像输入，请切换到多模态模型后上传图片'
 
+  const normalizeClipboardFile = (file: File, index: number) => {
+    if (file.name.trim()) {
+      return file
+    }
+
+    const extension = file.type === 'image/png'
+      ? 'png'
+      : file.type === 'image/jpeg'
+        ? 'jpg'
+        : file.type === 'image/webp'
+          ? 'webp'
+          : 'bin'
+    return new File([file], `clipboard-${Date.now()}-${index}.${extension}`, {
+      type: file.type,
+      lastModified: file.lastModified,
+    })
+  }
+
+  const filesFromClipboard = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const directFiles = Array.from(event.clipboardData.files ?? [])
+    const itemFiles = Array.from(event.clipboardData.items ?? [])
+      .filter((item) => item.kind === 'file')
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file))
+
+    const seen = new Set<string>()
+    return [...directFiles, ...itemFiles]
+      .map(normalizeClipboardFile)
+      .filter((file) => {
+        const key = `${file.name}:${file.type}:${file.size}:${file.lastModified}`
+        if (seen.has(key)) {
+          return false
+        }
+        seen.add(key)
+        return true
+      })
+  }
+
+  const uploadSelectedFiles = async (files: File[]) => {
+    const supportedFiles = filterSupportedAttachmentFiles(files)
+    const imageFiles = filterSupportedImageFiles(supportedFiles)
+
+    if (supportedFiles.length === 0) {
+      if (files.length > 0) {
+        setAttachmentNotice(getUnsupportedImageMessage())
+      }
+      return
+    }
+
+    if (imageFiles.length > 0 && !canUploadImages) {
+      setAttachmentNotice(imageUploadUnavailableMessage ?? '当前暂不能上传图片')
+      return
+    }
+
+    setAttachmentNotice(null)
+    try {
+      await onUploadImages(supportedFiles)
+    } catch (error) {
+      setAttachmentNotice(error instanceof Error ? error.message : '文件上传失败')
+    }
+  }
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (pending) {
@@ -179,25 +245,13 @@ export function ChatComposer({
   }
 
   const handlePaste = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = Array.from(event.clipboardData.files ?? [])
-    const supportedFiles = filterSupportedAttachmentFiles(files)
-    const imageFiles = filterSupportedImageFiles(supportedFiles)
-
-    if (supportedFiles.length === 0) {
-      if (files.length > 0) {
-        event.preventDefault()
-        setAttachmentNotice(getUnsupportedImageMessage())
-      }
-      return
-    }
-
-    if (imageFiles.length > 0 && !canUploadImages) {
-      setAttachmentNotice(imageUploadUnavailableMessage ?? '当前暂不能上传图片')
+    const files = filesFromClipboard(event)
+    if (files.length === 0) {
       return
     }
 
     event.preventDefault()
-    await onUploadImages(supportedFiles)
+    await uploadSelectedFiles(files)
   }
 
   const canSend =
@@ -274,41 +328,37 @@ export function ChatComposer({
                 const files = Array.from(event.target.files ?? [])
                 event.currentTarget.value = ''
                 if (files.length === 0) return
-                const supportedFiles = filterSupportedAttachmentFiles(files)
-                const imageFiles = filterSupportedImageFiles(supportedFiles)
-                if (supportedFiles.length === 0) {
-                  setAttachmentNotice(getUnsupportedImageMessage())
-                  return
-                }
-                if (imageFiles.length > 0 && !canUploadImages) {
-                  setAttachmentNotice(imageUploadUnavailableMessage ?? '当前暂不能上传图片')
-                  return
-                }
-                void onUploadImages(supportedFiles)
+                void uploadSelectedFiles(files)
               }}
             />
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || attachmentsUploading}
               onClick={() => {
                 fileInputRef.current?.click()
               }}
               className={clsx(
                 'flex h-8 w-8 items-center justify-center rounded-full border transition-colors',
-                !pending
+                !pending && !attachmentsUploading
                   ? 'border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800'
-                  : pending
+                  : pending || attachmentsUploading
                     ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-600'
                     : 'border-gray-200 bg-gray-50 text-gray-400 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500 dark:hover:bg-gray-800',
               )}
               aria-label="上传图片或文档"
               title={
-                pending
+                attachmentsUploading
+                  ? '正在上传文件'
+                  : pending
                   ? '生成中暂不能上传文件'
                   : '上传图片或文档'
               }
             >
-              <Plus className="h-4 w-4" strokeWidth={2.4} />
+              {attachmentsUploading ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2.2} />
+              ) : (
+                <Plus className="h-4 w-4" strokeWidth={2.4} />
+              )}
             </button>
             <div className="relative" ref={imageToolPanelRef}>
               <button
@@ -571,9 +621,13 @@ export function ChatComposer({
           </div>
         </div>
 
-        {attachmentNotice ? (
+        {attachmentsUploading ? (
+          <div className="border-t border-blue-100 bg-blue-50 px-4 py-2 text-[12px] text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-300">
+            正在上传文件…
+          </div>
+        ) : attachmentNotice || attachmentError ? (
           <div className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-[12px] text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
-            {attachmentNotice}
+            {attachmentNotice ?? attachmentError}
           </div>
         ) : null}
       </div>

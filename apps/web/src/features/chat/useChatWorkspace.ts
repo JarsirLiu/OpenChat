@@ -148,6 +148,7 @@ export function useChatWorkspace({
   >({})
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<UploadedImageAttachment[]>([])
+  const [attachmentsUploading, setAttachmentsUploading] = useState(false)
   const [requestErrorState, setRequestErrorState] = useState<ApiError | null>(null)
 
   const previousSessionIdRef = useRef(sessionId)
@@ -524,6 +525,7 @@ export function useChatWorkspace({
 
   const handleUploadImages = useCallback(
     async (files: File[]) => {
+      setAttachmentsUploading(true)
       try {
         const supportedFiles = filterSupportedAttachmentFiles(files)
         if (supportedFiles.length === 0) {
@@ -575,7 +577,11 @@ export function useChatWorkspace({
           ]
         })
       } catch (error) {
-        setRequestErrorState(toApiError(error, '文件上传失败'))
+        const apiError = toApiError(error, '文件上传失败')
+        setRequestErrorState(apiError)
+        throw apiError
+      } finally {
+        setAttachmentsUploading(false)
       }
     },
     [selectedModelSupportsImageInputs],
@@ -674,6 +680,7 @@ export function useChatWorkspace({
     historyLoading,
     loadOlderHistory,
     attachments,
+    attachmentsUploading,
     selectedImageTool,
     selectedImageToolKey,
     selectedTextModel,

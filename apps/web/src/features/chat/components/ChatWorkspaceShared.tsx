@@ -29,6 +29,8 @@ export interface ChatWorkspaceMainPaneProps {
   imageMenuItems: Parameters<typeof ChatComposer>[0]['imageTools']
   textMenuItems: Parameters<typeof ChatComposer>[0]['models']
   attachments: Parameters<typeof ChatComposer>[0]['attachments']
+  attachmentsUploading: boolean
+  attachmentError: string | null
   selectedProviderInitial: string
   onChangeInput: (value: string) => void
   onClearImageTool: () => void
@@ -45,6 +47,8 @@ export interface ChatWorkspaceMainPaneProps {
 
 export function ChatWorkspaceMainPane({
   attachments,
+  attachmentError,
+  attachmentsUploading,
   catalogLoading,
   currentUsername,
   imageMenuItems,
@@ -126,6 +130,8 @@ export function ChatWorkspaceMainPane({
             modelLoading={catalogLoading}
             imageToolLoading={catalogLoading}
             attachments={attachments}
+            attachmentsUploading={attachmentsUploading}
+            attachmentError={attachmentError}
             placeholder={
               !selectedTextModelId
                 ? '先选择一个对话模型'
