@@ -150,12 +150,17 @@ async fn normalize_attachments(
 
                     attachment.mime_type = media.content_type.clone();
                     attachment.size_bytes = media.size_bytes;
-                    attachment.extracted_text = crate::document_text::extract_supported_document_text(
+                    attachment.extracted_text = match crate::document_text::extract_supported_document_text(
                         media.bytes.as_slice(),
                         attachment.mime_type.as_str(),
                         attachment.name.as_str(),
-                    )
-                    .map_err(|error| ErrorResponseDto::from_code(VALIDATION_ERROR, error))?;
+                    ) {
+                        Ok(text) => text,
+                        Err(error) => Some(crate::document_text::document_text_extraction_notice(
+                            attachment.name.as_str(),
+                            error.as_str(),
+                        )),
+                    };
                     if let Some(text) = attachment.extracted_text.as_deref() {
                         if remaining_document_context_chars == 0 {
                             attachment.extracted_text =

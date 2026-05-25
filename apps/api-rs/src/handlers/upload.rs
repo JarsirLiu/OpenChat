@@ -122,7 +122,7 @@ async fn upload_multipart(
                 .into_response();
         }
 
-        let extracted_text = if matches!(mode, UploadMode::ImagesAndDocuments)
+        let (extracted_text, extraction_error) = if matches!(mode, UploadMode::ImagesAndDocuments)
             && !mime_type.to_ascii_lowercase().starts_with("image/")
         {
             match crate::document_text::extract_supported_document_text(
@@ -130,17 +130,19 @@ async fn upload_multipart(
                 mime_type.as_str(),
                 file_name.as_str(),
             ) {
-                Ok(text) => text,
-                Err(error) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(ErrorResponseDto::from_code(UPLOAD_PAYLOAD_INVALID, error)),
-                    )
-                        .into_response()
-                }
+                Ok(text) => (text, None),
+                Err(error) => (
+                    Some(crate::document_text::document_text_extraction_notice(
+                        file_name.as_str(),
+                        error.as_str(),
+                    )),
+                    Some(crate::document_text::document_text_extraction_user_message(
+                        file_name.as_str(),
+                    )),
+                ),
             }
         } else {
-            None
+            (None, None)
         };
 
         let object_key = build_upload_key(user_id, index, file_name.as_str());
@@ -172,6 +174,7 @@ async fn upload_multipart(
                 "document".to_string()
             },
             extracted_text,
+            extraction_error,
         });
         index += 1;
     }

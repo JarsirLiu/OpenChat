@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from 'react'
-import { ArrowUp, Check, ChevronDown, FileText, ImagePlus, LoaderCircle, Plus, Search, Square, X } from 'lucide-react'
+import { AlertTriangle, ArrowUp, Check, ChevronDown, FileText, ImagePlus, LoaderCircle, Plus, Search, Square, X } from 'lucide-react'
 import clsx from 'clsx'
 import {
   filterSupportedAttachmentFiles,
@@ -310,6 +310,14 @@ export function ChatComposer({
                     <span className="min-w-0 truncate text-[12px] font-medium text-gray-700 dark:text-gray-200">
                       {attachment.name}
                     </span>
+                    {attachment.extraction_error ? (
+                      <span
+                        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                        title={attachment.extraction_error}
+                      >
+                        <AlertTriangle className="h-3 w-3" strokeWidth={2.4} />
+                      </span>
+                    ) : null}
                   </>
                 )}
                 <button
@@ -651,6 +659,10 @@ export function ChatComposer({
         ) : attachmentNotice || attachmentError ? (
           <div className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-[12px] text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
             {attachmentNotice ?? attachmentError}
+          </div>
+        ) : attachments.some((attachment) => attachment.extraction_error) ? (
+          <div className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-[12px] text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+            {attachments.find((attachment) => attachment.extraction_error)?.extraction_error}
           </div>
         ) : null}
       </div>

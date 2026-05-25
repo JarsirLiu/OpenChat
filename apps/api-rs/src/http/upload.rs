@@ -10,4 +10,6 @@ pub struct UploadedAttachmentDto {
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extracted_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extraction_error: Option<String>,
 }

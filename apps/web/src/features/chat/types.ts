@@ -58,6 +58,7 @@ export interface UploadedImageAttachment {
   size_bytes: number
   kind?: 'image' | 'document'
   extracted_text?: string | null
+  extraction_error?: string | null
 }
 
 export interface SessionPreference {

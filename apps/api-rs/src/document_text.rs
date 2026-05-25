@@ -44,6 +44,16 @@ pub fn extract_supported_document_text(
     }))
 }
 
+pub fn document_text_extraction_notice(file_name: &str, error: &str) -> String {
+    format!(
+        "[文件「{file_name}」已上传，但文本提取失败：{error}。请复制文件文字内容、上传可选中文本的 PDF，或将关键页面截图后再发送。]"
+    )
+}
+
+pub fn document_text_extraction_user_message(file_name: &str) -> String {
+    format!("文件「{file_name}」已上传，但暂时无法自动提取文本；如需分析内容，请复制文字或上传关键页面截图")
+}
+
 pub fn truncate_document_text(text: &str, max_chars: usize) -> String {
     let mut chars = text.chars();
     let truncated = chars.by_ref().take(max_chars).collect::<String>();
@@ -128,7 +138,10 @@ fn normalize_text(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_supported_document_text, truncate_document_text, MAX_EXTRACTED_TEXT_CHARS};
+    use super::{
+        document_text_extraction_notice, document_text_extraction_user_message,
+        extract_supported_document_text, truncate_document_text, MAX_EXTRACTED_TEXT_CHARS,
+    };
 
     #[test]
     fn extracts_plain_text_uploads() {
@@ -165,5 +178,16 @@ mod tests {
         let truncated = truncate_document_text("abcdef", 3);
 
         assert_eq!(truncated, "abc\n\n[内容过长，已截断]");
+    }
+
+    #[test]
+    fn formats_pdf_extraction_fallback_messages() {
+        let model_notice = document_text_extraction_notice("bad.pdf", "ToUnicode CMap 错误");
+        let user_message = document_text_extraction_user_message("bad.pdf");
+
+        assert!(model_notice.contains("文本提取失败"));
+        assert!(model_notice.contains("ToUnicode CMap 错误"));
+        assert!(user_message.contains("已上传"));
+        assert!(user_message.contains("无法自动提取文本"));
     }
 }

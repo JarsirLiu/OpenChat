@@ -19,6 +19,7 @@ pub struct UploadedAttachmentDto {
     pub size_bytes: usize,
     pub kind: Option<String>,
     pub extracted_text: Option<String>,
+    pub extraction_error: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
