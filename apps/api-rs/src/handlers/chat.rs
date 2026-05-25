@@ -22,7 +22,7 @@ use crate::{
     state::AppState,
 };
 
-const MAX_ATTACHMENTS_PER_TURN: usize = 8;
+const MAX_ATTACHMENTS_PER_TURN: usize = 12;
 
 async fn validate_text_model_selection(
     state: &AppState,

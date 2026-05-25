@@ -4,7 +4,13 @@ import clsx from 'clsx'
 import {
   filterSupportedAttachmentFiles,
   filterSupportedImageFiles,
+  getFileTooLargeMessage,
+  getTooManyFilesMessage,
+  getUploadRequestTooLargeMessage,
   getUnsupportedImageMessage,
+  MAX_FILES_PER_UPLOAD,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_REQUEST_BYTES,
   SUPPORTED_IMAGE_ACCEPT,
 } from '../imageUpload'
 import { resolveModelIconKey } from '../modelIcon'
@@ -204,6 +210,23 @@ export function ChatComposer({
   }
 
   const uploadSelectedFiles = async (files: File[]) => {
+    if (files.length > MAX_FILES_PER_UPLOAD) {
+      setAttachmentNotice(getTooManyFilesMessage())
+      return
+    }
+
+    const oversizedFile = files.find((file) => file.size > MAX_UPLOAD_BYTES)
+    if (oversizedFile) {
+      setAttachmentNotice(getFileTooLargeMessage(oversizedFile.name || '未命名文件'))
+      return
+    }
+
+    const totalBytes = files.reduce((sum, file) => sum + file.size, 0)
+    if (totalBytes > MAX_UPLOAD_REQUEST_BYTES) {
+      setAttachmentNotice(getUploadRequestTooLargeMessage())
+      return
+    }
+
     const supportedFiles = filterSupportedAttachmentFiles(files)
     const imageFiles = filterSupportedImageFiles(supportedFiles)
 

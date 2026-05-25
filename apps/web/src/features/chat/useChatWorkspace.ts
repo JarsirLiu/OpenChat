@@ -20,7 +20,13 @@ import { sessionDetailCacheKey, useChatStream } from './useChatStream'
 import {
   filterSupportedAttachmentFiles,
   filterSupportedImageFiles,
+  getFileTooLargeMessage,
+  getTooManyFilesMessage,
+  getUploadRequestTooLargeMessage,
   getUnsupportedImageMessage,
+  MAX_FILES_PER_UPLOAD,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_REQUEST_BYTES,
 } from './imageUpload'
 import { compressImageFiles } from './imageCompression'
 import { useModelCatalog } from './useModelCatalog'
@@ -527,6 +533,35 @@ export function useChatWorkspace({
     async (files: File[]) => {
       setAttachmentsUploading(true)
       try {
+        if (files.length > MAX_FILES_PER_UPLOAD) {
+          throw new ApiError(getTooManyFilesMessage(), {
+            status: 400,
+            code: API_ERROR_CODES.uploadPayloadInvalid.code,
+            category: API_ERROR_CODES.uploadPayloadInvalid.category,
+            retryable: API_ERROR_CODES.uploadPayloadInvalid.retryable,
+          })
+        }
+
+        const oversizedFile = files.find((file) => file.size > MAX_UPLOAD_BYTES)
+        if (oversizedFile) {
+          throw new ApiError(getFileTooLargeMessage(oversizedFile.name || '未命名文件'), {
+            status: 400,
+            code: API_ERROR_CODES.uploadPayloadInvalid.code,
+            category: API_ERROR_CODES.uploadPayloadInvalid.category,
+            retryable: API_ERROR_CODES.uploadPayloadInvalid.retryable,
+          })
+        }
+
+        const totalBytes = files.reduce((sum, file) => sum + file.size, 0)
+        if (totalBytes > MAX_UPLOAD_REQUEST_BYTES) {
+          throw new ApiError(getUploadRequestTooLargeMessage(), {
+            status: 400,
+            code: API_ERROR_CODES.uploadPayloadInvalid.code,
+            category: API_ERROR_CODES.uploadPayloadInvalid.category,
+            retryable: API_ERROR_CODES.uploadPayloadInvalid.retryable,
+          })
+        }
+
         const supportedFiles = filterSupportedAttachmentFiles(files)
         if (supportedFiles.length === 0) {
           if (files.length > 0) {

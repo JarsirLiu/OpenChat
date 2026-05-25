@@ -1,4 +1,5 @@
 use axum::{
+    extract::DefaultBodyLimit,
     http::{header, HeaderName, HeaderValue, Method},
     middleware,
     routing::{get, post},
@@ -7,6 +8,8 @@ use axum::{
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::{config::AppConfig, handlers, state::AppState};
+
+const MAX_UPLOAD_REQUEST_BYTES: usize = 120 * 1024 * 1024;
 
 pub fn build_router(state: AppState, config: &AppConfig) -> Router {
     let router = Router::new()
@@ -45,8 +48,16 @@ pub fn build_router(state: AppState, config: &AppConfig) -> Router {
                 .put(handlers::sessions::rename_session)
                 .delete(handlers::sessions::delete_session),
         )
-        .route("/api/uploads/images", post(handlers::upload::upload_images))
-        .route("/api/uploads/files", post(handlers::upload::upload_files))
+        .route(
+            "/api/uploads/images",
+            post(handlers::upload::upload_images)
+                .layer(DefaultBodyLimit::max(MAX_UPLOAD_REQUEST_BYTES)),
+        )
+        .route(
+            "/api/uploads/files",
+            post(handlers::upload::upload_files)
+                .layer(DefaultBodyLimit::max(MAX_UPLOAD_REQUEST_BYTES)),
+        )
         .route("/api/chat", post(handlers::chat::send_message))
         .route(
             "/api/sessions/:session_id/turns/:turn_id/interrupt",

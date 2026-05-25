@@ -54,8 +54,13 @@ export const createApiError = async (
   fallbackMessage: string,
 ): Promise<ApiError> => {
   const payload = await readApiErrorPayload(response)
+  const message =
+    payload?.message ??
+    (response.status === 413
+      ? '本次上传文件总量过大，服务器已拒绝接收。请压缩文件或分批上传。'
+      : fallbackMessage)
 
-  return new ApiError(payload?.message ?? fallbackMessage, {
+  return new ApiError(message, {
     status: response.status,
     code: payload?.code ?? null,
     category: payload?.category ?? null,

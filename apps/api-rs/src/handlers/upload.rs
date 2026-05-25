@@ -23,8 +23,8 @@ const SUPPORTED_DOCUMENT_MIME_TYPES: &[&str] = &[
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
-const MAX_UPLOAD_BYTES: usize = 20 * 1024 * 1024;
-const MAX_FILES_PER_UPLOAD: usize = 8;
+const MAX_UPLOAD_BYTES: usize = 100 * 1024 * 1024;
+const MAX_FILES_PER_UPLOAD: usize = 12;
 
 pub async fn upload_images(
     State(state): State<AppState>,
@@ -64,7 +64,7 @@ async fn upload_multipart(
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponseDto::from_code(
                     UPLOAD_PAYLOAD_INVALID,
-                    format!("Failed to read upload payload: {error}"),
+                    format!("上传内容读取失败，可能是文件超过服务器限制或网络中断：{error}"),
                 )),
             )
                 .into_response()
@@ -75,7 +75,7 @@ async fn upload_multipart(
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponseDto::from_code(
                     UPLOAD_PAYLOAD_INVALID,
-                    format!("一次最多上传 {MAX_FILES_PER_UPLOAD} 个文件"),
+                    too_many_files_message(),
                 )),
             )
                 .into_response();
@@ -105,7 +105,7 @@ async fn upload_multipart(
                     StatusCode::BAD_REQUEST,
                     Json(ErrorResponseDto::from_code(
                         UPLOAD_PAYLOAD_INVALID,
-                        format!("Failed to read uploaded image bytes: {error}"),
+                        format!("文件「{file_name}」读取失败，可能是文件过大或上传中断：{error}"),
                     )),
                 )
                     .into_response()
@@ -116,7 +116,7 @@ async fn upload_multipart(
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponseDto::from_code(
                     UPLOAD_PAYLOAD_INVALID,
-                    format!("上传文件不能超过 {} MB", MAX_UPLOAD_BYTES / 1024 / 1024),
+                    file_too_large_message(file_name.as_str()),
                 )),
             )
                 .into_response();
@@ -206,12 +206,27 @@ fn is_supported_upload_type(mime_type: &str, file_name: &str, mode: UploadMode) 
 fn unsupported_upload_message(mode: UploadMode, mime_type: &str) -> String {
     match mode {
         UploadMode::ImagesOnly => format!(
-            "Unsupported upload type `{mime_type}`. Only PNG, JPG/JPEG, and WebP are supported."
+            "不支持的上传类型「{mime_type}」。当前支持 PNG、JPG/JPEG、WebP 图片。"
         ),
         UploadMode::ImagesAndDocuments => format!(
-            "Unsupported upload type `{mime_type}`. Supported: PNG, JPG/JPEG, WebP, TXT, Markdown, PDF, and DOCX."
+            "不支持的上传类型「{mime_type}」。当前支持 PNG、JPG/JPEG、WebP 图片，以及 TXT、Markdown、PDF、DOCX 文档。"
         ),
     }
+}
+
+fn upload_limit_mb() -> usize {
+    MAX_UPLOAD_BYTES / 1024 / 1024
+}
+
+fn too_many_files_message() -> String {
+    format!("一次最多上传 {MAX_FILES_PER_UPLOAD} 个文件，请分批上传")
+}
+
+fn file_too_large_message(file_name: &str) -> String {
+    format!(
+        "文件「{file_name}」过大，单个文件请控制在 {} MB 以内；文档内容会自动截断到模型上下文范围",
+        upload_limit_mb()
+    )
 }
 
 fn build_upload_key(user_id: &str, index: usize, file_name: &str) -> String {
