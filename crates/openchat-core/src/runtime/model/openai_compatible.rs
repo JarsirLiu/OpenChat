@@ -1,6 +1,6 @@
 use async_stream::try_stream;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
@@ -744,7 +744,7 @@ fn model_supports_image_inputs(input_modalities: &[String]) -> bool {
 mod tests {
     use super::{
         build_current_user_message_content, build_openai_message_content, build_openai_messages,
-        model_supports_image_inputs, OpenAiMessageContent,
+        model_supports_image_inputs, OpenAiChatStreamChunk, OpenAiMessageContent,
     };
     use crate::{
         ModelMediaUrlResolver, OutboundContentPart, OutboundMessage, OutboundToolCall, TurnPlan,
@@ -772,6 +772,48 @@ mod tests {
         ]));
         assert!(model_supports_image_inputs(&["vision".into()]));
         assert!(!model_supports_image_inputs(&["text".into()]));
+    }
+
+    #[test]
+    fn stream_delta_content_accepts_text_part_arrays() {
+        let chunk: OpenAiChatStreamChunk = serde_json::from_value(serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "content": [
+                        { "type": "text", "text": "地方性法规由" },
+                        { "type": "text", "text": "本级人民代表大会及其常务委员会制定。" }
+                    ]
+                }
+            }]
+        }))
+        .expect("array content chunks should parse");
+
+        assert_eq!(
+            chunk.choices[0].delta.content.as_deref(),
+            Some("地方性法规由本级人民代表大会及其常务委员会制定。")
+        );
+    }
+
+    #[test]
+    fn stream_delta_content_accepts_nested_text_objects() {
+        let chunk: OpenAiChatStreamChunk = serde_json::from_value(serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "content": { "output_text": "不是地方方法主权，而是地方主动性。" },
+                    "reasoning_content": { "text": "检查概念边界" }
+                }
+            }]
+        }))
+        .expect("object content chunks should parse");
+
+        assert_eq!(
+            chunk.choices[0].delta.content.as_deref(),
+            Some("不是地方方法主权，而是地方主动性。")
+        );
+        assert_eq!(
+            chunk.choices[0].delta.reasoning_content.as_deref(),
+            Some("检查概念边界")
+        );
     }
 
     #[tokio::test]
@@ -1024,14 +1066,43 @@ struct OpenAiChatStreamChoice {
 
 #[derive(Default, Deserialize)]
 struct OpenAiChatStreamDelta {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_optional_stream_text")]
     content: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_optional_stream_text")]
     reasoning_content: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_optional_stream_text")]
     reasoning: Option<String>,
     #[serde(default)]
     tool_calls: Option<Vec<OpenAiChatStreamToolCallDelta>>,
+}
+
+fn deserialize_optional_stream_text<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.as_ref().and_then(extract_stream_text))
+}
+
+fn extract_stream_text(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(text) => Some(text.clone()),
+        serde_json::Value::Array(parts) => {
+            let text = parts
+                .iter()
+                .filter_map(extract_stream_text)
+                .collect::<Vec<_>>()
+                .join("");
+
+            (!text.is_empty()).then_some(text)
+        }
+        serde_json::Value::Object(object) => object
+            .get("text")
+            .or_else(|| object.get("content"))
+            .or_else(|| object.get("output_text"))
+            .and_then(extract_stream_text),
+        _ => None,
+    }
 }
 
 #[derive(Default)]

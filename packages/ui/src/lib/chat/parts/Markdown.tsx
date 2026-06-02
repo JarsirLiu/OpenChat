@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { createMarkdownComponents } from './markdownComponents'
+import { remarkExposeInvisibleMarkdown } from './markdownSafety'
 
 interface MarkdownProps {
   content: string
@@ -10,7 +11,10 @@ interface MarkdownProps {
 export function Markdown({ content, className }: MarkdownProps) {
   return (
     <div className={className ? `lc-markdown ${className}` : 'lc-markdown'}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={createMarkdownComponents()}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkExposeInvisibleMarkdown]}
+        components={createMarkdownComponents()}
+      >
         {content}
       </ReactMarkdown>
     </div>

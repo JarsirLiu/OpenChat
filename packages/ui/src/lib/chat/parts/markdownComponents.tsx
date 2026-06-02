@@ -34,13 +34,16 @@ export const createMarkdownComponents = () => ({
     />
   ),
   img: ({ src, alt, ...props }: ComponentPropsWithoutRef<'img'>) => (
-    <img
-      {...props}
-      src={src}
-      alt={alt ?? ''}
-      className="lc-message-image"
-      loading="lazy"
-    />
+    <span className="lc-markdown-image-wrap">
+      <img
+        {...props}
+        src={src}
+        alt={alt ?? ''}
+        className="lc-message-image"
+        loading="lazy"
+      />
+      {alt ? <span className="lc-markdown-image-caption">{alt}</span> : null}
+    </span>
   ),
   code: ({ className, children, ...props }: ComponentPropsWithoutRef<'code'>) => {
     const language = getCodeLanguage(className)
